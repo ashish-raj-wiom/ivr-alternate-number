@@ -3,7 +3,7 @@
 | | | | |
 |---|---|---|---|
 | **Owner** — Ashish Raj (PM) | **Reviewer** — Rahul (Eng Lead) | **Status** — Draft | **Sign-off** — Pending |
-| **Version** — v0.2 · 4 Aug 2026 | | | |
+| **Version** — v0.3 · 4 Aug 2026 | | | |
 
 ---
 
@@ -11,15 +11,15 @@
 
 **Objective.** A CSP who calls a customer about their installation, restore or pickup ticket reaches that customer — if the registered number does not answer, the call moves on by itself to another number the customer has told us they are reachable on, and the customer's chances of being reached increase.
 
-**Boundary.** This spec governs a customer's alternate numbers wherever the IVR touches them, on Install, Service (restore) and Pickup tickets — every ticket family the IVR serves — at every CSP where IVR 2.0 is live. It covers three things: **holding** a customer's alternate numbers, **dialling** them when a CSP calls out, and **recognising** them when a customer calls in.
+**Boundary.** This spec governs **CSP-initiated** IVR calls on Install, Service (restore) and Pickup tickets — every ticket family the IVR serves — at every CSP where IVR 2.0 is live. It covers two things: **holding** a customer's alternate numbers, and **using** them as the destination when a CSP calls out.
 
-**Recognising them on the way in is not an extra.** IVR 2.0 identifies a caller by the number they call from, and a PIN then names the ticket. A customer calling from a second phone is a stranger to that first step, so today they reach a dead end however correct their PIN. Every alternate number this spec holds is therefore also a key that identifies its owner on an inbound call (R10, G6).
+**It enriches whom to dial, and changes nothing about how the IVR decides.** IVR 2.0 resolves the destination two ways: from the app, a cached mapping for that call; from an unknown number, the PIN the caller enters. This spec touches neither. It only enriches what that resolution produces — where one number stood, an ordered list of the customer's numbers stands — and it does so identically whichever way the call arrived (R10, AC-PIN-1).
 
 It leaves unchanged:
 
-- **Customer-initiated escalation** — where a customer's call goes *after* it is identified, from the executor to the CSP's manager and owner, is a separate PRD (AC-REG-1).
+- **Customer-initiated escalation** — the chain from the executor to the CSP's manager and owner is a separate PRD (AC-REG-1).
 - **The registered number itself** — this spec never changes, replaces or reorders a customer's registered number. That number is always dialled first (G2, AC-REG-2).
-- **The PIN itself** — how PINs are issued, shown, entered, expired or matched to a ticket is governed by the existing IVR product spec. This spec changes only which calling numbers resolve to a customer, never what the PIN means or how it is checked (AC-REG-3).
+- **How the IVR decides whom to dial** — the app cache, the PIN, caller identification and dead-end handling are all governed by the existing IVR product spec. This spec begins only once that resolution has named a customer (AC-REG-3, AC-PIN-2).
 - **What the CSP is told** — the CSP is not told which number answered, or that any alternate exists. Out of scope (AC-REG-4).
 - **Call-status recording** — every call status Exotel returns is still recorded for each individual call, exactly as today. This spec adds to that record, it does not replace or reshape it (AC-REG-5).
 - **Ring durations** — how long each number rings, and the total ringing a CSP hears, are Exotel applet configuration, not parameters of this spec (see Overrides).
@@ -34,7 +34,7 @@ It leaves unchanged:
 | G3 | **One dial per number** | No number is dialled twice in one call, including an alternate that duplicates the registered number. | R3 · AC-GRD-3 · MQ-4 |
 | G4 | **Only this customer's numbers** | The call only ever dials numbers held against the customer who owns the ticket — never another customer's, never the CSP's own. | R7 · AC-GRD-4 · MQ-6 |
 | G5 | **Stale numbers are never dialled** | A number past its validity window (C-02) is never called, however few alternatives exist. | R6 · AC-GRD-5 · MQ-8 |
-| G6 | **Known both ways** | A number good enough to dial is good enough to be recognised on the way in — the same list serves outbound and inbound. | R10 · AC-GRD-6 · MQ-12 |
+| G6 | **The same list either way** | The destination list is the same whether the call came from the app cache or from a PIN — the IVR's own resolution is never altered. | R10 · AC-GRD-6 · MQ-12 |
 
 ### Success metrics
 
@@ -74,8 +74,7 @@ Ticket-level connect rate is defined in §8. A ticket where the CSP hung up befo
 | R7 | As a customer, I want only my own numbers dialled about my job. | Restrict every dial to numbers held against the customer who owns the ticket (G4). | Dial another customer's number, the CSP's own number, or any number not held against this customer. |
 | R8 | As an ops user, I need to add, correct or remove a customer's alternate number when I learn it is right or wrong. | **(a)** Let an authorised internal user add, update and remove a customer's alternate numbers. **(b)** Record who made each change and when. | Let a change be made without an identified user attached to it. |
 | R9 | As the business, I need to know that a number we hold is our responsibility to get right. | Treat whoever entered a number — system or ops — as accountable for it being the right customer's number. | Assume a stored number is correct because it was dialled successfully before. |
-| R10 | As a customer calling the IVR from my second phone, I want to be recognised and reach my ticket, not a dead end. | **(a)** Identify an inbound caller by any live alternate number held for them, exactly as by their registered number (G6). **(b)** Once identified, treat the call the same as one from the registered number — same PIN step, same routing, same ticket. | **(a)** Dead-end a caller whose number is held as a live alternate. **(b)** Treat a call from an alternate as lower-trust, or ask the caller anything extra because of it. |
-| R11 | As a customer who called in from a new phone and proved who I am with my PIN, I want that number remembered. | Store the calling number as an alternate for the customer whose ticket the PIN resolved to, when that number is not already held (N6). | Store a calling number on the strength of an unverified or failed PIN attempt. |
+| R10 | As a CSP who reached the customer through the IVR by dialling back and entering a PIN, I want the same fallback I get from the app. | Build and use the same destination list however the IVR resolved the destination — from the app's cached mapping or from an entered PIN (G6). | **(a)** Apply the fallback on one entry path and not the other. **(b)** Change how the app cache or the PIN resolves a destination, or what a PIN means. |
 
 ---
 
@@ -104,14 +103,9 @@ flowchart TD
     P -- "Yes" --> Q["N4 — rejected, not stored"]
     P -- "No" --> R["N1 — store as alternate"]
     S["Ops acts in the portal"] --> T["N3 — added, updated or removed"]
-    U["Customer-initiated call arrives at the IVR"] --> V{"Calling number is the customer's registered number?"}
-    V -- "Yes" --> W["Identified — existing IVR flow, PIN step unchanged (§1 Boundary)"]
-    V -- "No" --> X{"Calling number is a live alternate held for a customer?"}
-    X -- "Yes" --> W
-    X -- "No" --> Y{"Caller enters a PIN that resolves to a ticket?"}
-    Y -- "Yes" --> Z["N6 — store the calling number as that customer's alternate"]
-    Y -- "No" --> AA["Dead end — existing IVR flow (§1 Boundary)"]
 ```
+
+**Both IVR entry paths reach T1 unchanged.** A CSP calling from the app resolves the destination through the cached mapping; a CSP dialling the masked number resolves it by entering a PIN. Either way the IVR names a customer, and T1 begins there — this spec never alters that resolution (R10, G6, AC-PIN-1, AC-PIN-2).
 
 **Precedence — CSP hangup beats fallback.** If the CSP disconnects while a number is ringing, the call ends there and no further number is dialled (T5, AC-RACE-1).
 
@@ -148,7 +142,6 @@ Each outbound call creates its own run; no state carries between calls.
 | N3 | Live or Expired | An authorised internal user adds, updates or removes the number in the ops portal | The user is identified | Live, or Removed | The change takes effect on the next call (R8a). The acting user and the time are recorded (R8b, MQ-11). A removed number is never dialled again unless re-added. |
 | N4 | — | A calling number is offered for storage | It equals the customer's registered number, or is not a valid mobile number | Not stored | Rejected, so the registered number can never be dialled twice in one run (G3). The rejection is recorded so a broken capture path is visible (MQ-11). |
 | N5 | Live | C-02 elapses since the number was last seen | — | Expired | Never dialled again (R6, G5) unless it returns via N2 or N3. It is retained, not deleted, so its history stays visible in the ops portal. |
-| N6 | — | A customer calls the IVR from a number held for nobody, and enters a PIN that resolves to a ticket | The PIN resolved; the calling number differs from that customer's registered number and from every number already held for them | Live | Number stored against the ticket's customer, source recorded as PIN-verified (R11, MQ-11). **The strongest capture path in this spec** — the caller proved they hold the ticket, so no agent or ops step is needed. A failed or absent PIN stores nothing (R11 must-not). |
 
 ---
 
@@ -210,8 +203,8 @@ Internal screen, for authorised call-centre and ops users only.
 | MQ-8 | Whether any dial was placed to a number outside its validity window (C-02). | G5 invariant (R6) |
 | MQ-9 | How many active customers hold at least one live alternate number, and how that count is moving. | M1 — the gating metric |
 | MQ-10 | For one call, the outcome of **every** number dialled, one row each — which number, at which position, and whether it answered, did not answer, was busy or could not be reached — with every row tied to that call by a single identifier, and to the ticket and customer. | M4 · G2 · G3 · G4 · G5 · underpins MQ-2 · MQ-3 · MQ-4 |
-| MQ-11 | For each alternate number: where it came from — Capture, ops, or PIN-verified — who entered or last changed it, when it was first and last seen, and every rejection that stopped one being stored. | R5 · R8b · R9 · N4 · N6 · the health of the capture path |
-| MQ-12 | Of inbound customer calls, how many were identified by a registered number, by an alternate number, and not at all — and of those not identified, how many went on to enter a valid PIN. | G6 · R10 · R11 · sizing what N6 will capture |
+| MQ-11 | For each alternate number: where it came from, who entered or last changed it, when it was first and last seen, and every rejection that stopped one being stored. | R5 · R8b · R9 · N4 · the health of the capture path |
+| MQ-12 | For each call, which IVR entry path resolved the destination — app cache or entered PIN — so the fallback can be shown to behave the same on both. | G6 · R10 |
 
 ---
 
@@ -257,17 +250,13 @@ Internal screen, for authorised call-centre and ops users only.
 | AC-CAP-4 | **Given** 09811100055 expired on 2 Aug 2026, **When** Meena calls from it on 12 Aug 2026 and is identified, **Then** it returns to Live with last-seen 12 Aug 2026 and is dialable again. | N2 · N5 | Settled |
 | AC-CAP-5 | **Given** a call arrives from a number that cannot be tied to any customer, **When** the ticket is handled, **Then** nothing is stored — a number is never held without knowing whose it is. | R5 must-not · N1 | Settled |
 
-### IN — Recognising a customer calling in (R10, N6)
+### PIN — Both IVR entry paths (R10)
 
 | AC | Given / When / Then | Verifies | Status |
 |---|---|---|---|
-| AC-IN-1 | **Given** Meena holds 09811100044 as a live alternate, **When** she calls the IVR from it, **Then** she is identified as Meena and reaches the same PIN step and the same ticket she would have from 09811100022 — no dead end. | R10a · R10b · G6 | Settled |
-| AC-IN-2 | **Given** the same call, **When** she enters her PIN, **Then** the PIN is checked exactly as it would be for a call from her registered number — no extra question, no additional check. | R10b · R10 must-not(b) · AC-REG-3 | Settled |
-| AC-IN-3 | **Given** 09811100055 expired on 2 Aug 2026, **When** Meena calls from it on 12 Aug, **Then** it does not identify her — an expired number is not an identification key either. | R10a · N5 · G5 · G6 | Settled |
-| AC-IN-4 | **Given** Meena calls from 09811100066, held for nobody, **When** she enters a PIN that resolves to `TKT-88231`, **Then** 09811100066 is stored as her alternate with source PIN-verified, and is dialable on her next call. | R11 · N6 | Settled |
-| AC-IN-5 | **Given** a caller from 09811100066, **When** they enter a PIN that matches no ticket and the call dead-ends, **Then** nothing is stored — an unproven number never becomes an alternate. | R11 must-not · N6 | Settled |
-| AC-IN-6 | **Given** a caller from 09811100066, **When** they hang up before entering any PIN, **Then** nothing is stored. | R11 must-not · N6 | Settled |
-| AC-IN-7 | **Given** Meena calls from 09811100022, her registered number, **When** she enters a valid PIN, **Then** nothing is stored as an alternate — the registered number is not an alternate to itself. | N6 · N4 · G3 | Settled |
+| AC-PIN-1 | **Given** Meena holds both alternates, **When** Ravi dials the masked number from his call log and enters the PIN for `TKT-88231`, **Then** the dial list is 09811100022, then 09811100044, then 09811100055 — identical to AC-DIAL-1, where he called from the app. | R10 · G6 · T1 | Settled |
+| AC-PIN-2 | **Given** the same PIN-entered call, **When** the IVR resolves the destination, **Then** the PIN is matched to the ticket exactly as before this spec — this spec adds numbers to the destination and changes nothing about how the destination was found. | R10 must-not(b) · §1 Boundary | Settled |
+| AC-PIN-3 | **Given** Ravi's PIN-entered call, **When** 09811100022 does not answer, **Then** 09811100044 is dialled next — the fallback is not limited to app-originated calls. | R10 must-not(a) · T3 · G6 | Settled |
 
 ### OPS — The ops portal (N3)
 
@@ -349,7 +338,7 @@ Internal screen, for authorised call-centre and ops users only.
 | AC-GRD-3 | **Given** any run for a customer whose alternates include a duplicate, **When** the dial list is checked, **Then** no number appears twice. | G3 · R3 · MQ-4 | Settled |
 | AC-GRD-4 | **Given** any run on `TKT-88231`, **When** every number dialled is checked, **Then** all belong to Meena — none is another customer's, and none is the CSP's own. | G4 · R7 · MQ-6 | Settled |
 | AC-GRD-5 | **Given** a customer whose only alternate expired yesterday, **When** a CSP calls, **Then** the expired number is not dialled even though it would have been the only fallback available. | G5 · R6 · MQ-8 | Settled |
-| AC-GRD-6 | **Given** any number held live for a customer, **When** it is used both ways, **Then** the same number that a CSP call would dial also identifies that customer when they call in — one list, both directions, never one without the other. | G6 · R10 · MQ-12 | Settled |
+| AC-GRD-6 | **Given** the same customer and ticket, **When** one call is placed from the app and another by dialling back and entering the PIN, **Then** both build the same destination list in the same order — the entry path never changes whom gets dialled. | G6 · R10 · MQ-12 | Settled |
 
 ---
 
@@ -385,8 +374,6 @@ What the platform must be able to do for this feature to exist. Whether these ar
 | Fall back to the registered number alone when the list cannot be resolved, without failing the call. | T7 |
 | Let authorised internal users read and change one customer's number list, with every change attributed to a named user, and keep everyone else out. | N3 · R8 · §4 |
 | Give each run an identifier and record one row per number dialled — the number, its position and its outcome — tied to the customer and ticket. | MQ-10 |
-| Resolve an inbound calling number to its customer using the registered number **and** every live alternate, so the same list serves both directions. | R10 · G6 · MQ-12 |
-| Store a calling number as an alternate once an entered PIN has resolved it to a ticket, and store nothing when it has not. | N6 · R11 |
 | Report coverage across the customer base, and the health of the capture path including rejections. | MQ-9 · MQ-11 · M1 |
 | Turn the fallback off without a release, and change C-01 and C-02 without a release. | C-01 · C-02 · C-03 |
 
