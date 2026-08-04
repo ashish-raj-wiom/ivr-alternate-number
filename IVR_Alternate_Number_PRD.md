@@ -2,8 +2,8 @@
 
 | | | | |
 |---|---|---|---|
-| **Owner** — Ashish Raj (PM) | **Reviewer** — Rahul (Eng Lead) | **Status** — Draft | **Sign-off** — Pending |
-| **Version** — v0.5 · 4 Aug 2026 | | | |
+| **Owner** — Ashish Raj (PM) | **Reviewer** — Rahul (Eng Lead) | **Status** — Signed off | **Sign-off** — Signed off · 4 Aug 2026 |
+| **Version** — v1.0 · 4 Aug 2026 | | | |
 
 ---
 
@@ -44,8 +44,7 @@ Ticket-level connect rate is defined in §8. A ticket where the CSP hung up befo
 |---|---|---|---|---|
 | M1 | Ticket-level connect rate — **Service** (restore) | 66.7% | 75.8% | MQ-1 |
 | M2 | Ticket-level connect rate — **Pickup** | 50.7% | 75.8% | MQ-1 |
-| M3 | Ticket-level connect rate — **Install** | 75.8% | ≥ 75.8% — any gain is upside; a fall below baseline is a regression ⚠️ *AI GENERATED — review* | MQ-1 |
-| M4 | Share of connected tickets that connect on the **registered number** | ~100% *(today there is no second number to dial)* | No family falls below 90% ⚠️ *AI GENERATED — review* | MQ-3 |
+| M3 | Ticket-level connect rate — **Install** | 75.8% | ≥ 75.8% — any gain is upside; a fall below baseline is a regression | MQ-1 |
 
 **Where the 75.8% comes from, and why it does not move.** It is what install tickets achieved on CSP-initiated calls in the window above — **before** this spec ships. It is the closest thing to a ceiling this direction is known to reach, so Service and Pickup aim at it. It is frozen as a historical mark: install is itself in scope, so install's own rate should climb past 75.8% and must not be allowed to redefine M1 and M2's target as it does. The benchmark is also direction-matched on purpose — install's all-directions figure (79.6%) mixes in customer-initiated calls, and its customer-initiated figure (69.0%) belongs to the escalation-chain PRD, so neither can be used here.
 
@@ -53,7 +52,7 @@ Install has the least room to gain of the three families, and that is expected. 
 
 **How far these can move depends on how many customers hold a second number.** A ticket whose customer has no alternate gets exactly one dial, as it does today (T6), so the fallback can only act on the covered share of the base. MQ-9 reports that share, which is what explains a connect rate that does or does not move.
 
-**M4 is the counter-metric.** If connect rate rises while M4 falls sharply, calls are being answered by whoever holds the alternate rather than by the customer. Reaching a different person is not the same as reaching the customer, and MQ-10 exists to tell the two apart.
+**Reaching a different person is not the same as reaching the customer.** An alternate number is answered by whoever holds that handset, and this spec cannot prove it was the customer. MQ-2 and MQ-10 record which position answered on every call, so a connect rate that rises while the registered number is answering less often is visible rather than hidden.
 
 **Invariant (not a metric):** G2 — calls where the registered number was not dialled first = 0, zero tolerance. Monitored via MQ-7, not trended.
 
@@ -77,6 +76,7 @@ Install has the least room to gain of the three families, and that is expected. 
 | R8 | As an ops user, I need to add, correct or remove a customer's alternate number when I learn it is right or wrong. | **(a)** Let an authorised internal user add, update and remove a customer's alternate numbers. **(b)** Record who made each change and when. | Let a change be made without an identified user attached to it. |
 | R9 | As the business, I need to know that a number we hold is our responsibility to get right. | Treat whoever entered a number — system or ops — as accountable for it being the right customer's number. | Assume a stored number is correct because it was dialled successfully before. |
 | R10 | As a CSP who reached the customer through the IVR by dialling back and entering a PIN, I want the same fallback I get from the app. | Build and use the same destination list however the IVR resolved the destination — from the app's cached mapping or from an entered PIN (G6). | **(a)** Apply the fallback on one entry path and not the other. **(b)** Change how the app cache or the PIN resolves a destination, or what a PIN means. |
+| R11 | As a customer, I do not want my phone numbers on an internal screen for anyone who happens to be looking at it. | **(a)** Mask a stored number in the internal portal, showing it in full only when the user asks for that one number. **(b)** Record each reveal against the user who asked. | Show full numbers by default, or reveal a number as a side effect of viewing, searching or editing the list. |
 
 ---
 
@@ -163,17 +163,19 @@ For authorised call-centre and ops users only.
 | Element | Source / Routes to | Logic |
 |---|---|---|
 | Field — registered number | customer record | always shown, always first, never editable here (R2) |
-| Field — alternate number | alternate number (§8) | shown in dial order, newest-seen first (R4); shown in full ⚠️ *AI GENERATED — review* |
+| Field — alternate number | alternate number (§8) | shown in dial order, newest-seen first (R4); masked by default, so a full number is never on screen unless the user asked for it (R11a) |
 | Field — last seen | alternate number · last-seen | drives the order and the expiry countdown (C-02) |
 | Field — status | computed | Live, or Expired with the date it expired (N5); expired entries stay visible but are visibly not dialable (G5) |
 | Field — will be dialled | computed | marks the numbers that would actually be used on the next call — the first C-01 live, distinct entries (R3, R4) |
 | Field — source | alternate number · source | how it arrived: a customer call into Capture (N1), or an ops entry with the user's name (N3, R9) |
+| Action — reveal number | — | shows one number in full, on the user's explicit action (R11a); each reveal is recorded (R11b) |
 | Action — add number | N3 via §3a | for an authorised user only |
 | Action — update number | N3 via §3a | for an authorised user only |
 | Action — remove number | N3 via §3a | for an authorised user only; asks for confirmation, stating the number will no longer be called |
 | Check — reject duplicate | — | refuses a number equal to the registered number or to one already held, and says which (N4, G3) |
 | Check — reject invalid | — | refuses anything that is not a valid mobile number (N4) |
 | Check — authorisation | — | an unauthorised user cannot see or change the list |
+| Check — edit without reveal | — | a number can be replaced without revealing the old one — correcting a number never forces it on screen |
 
 ---
 
@@ -196,15 +198,15 @@ For authorised call-centre and ops users only.
 | ID | The system must be able to answer… | Feeds |
 |---|---|---|
 | MQ-1 | Of in-scope tickets with at least one CSP-initiated call, what share had at least one call where a person answered — split by ticket family. Abandoned runs count as not connected. | M1 · M2 · M3 |
-| MQ-2 | For each call, which position in the dial list answered — registered, first alternate, second alternate, or none. | G1 · M4 |
-| MQ-3 | For each position, the share of dials to that position that were answered. | M4 · G2 |
+| MQ-2 | For each call, which position in the dial list answered — registered, first alternate, second alternate, or none. | G1 · M1 · M2 · M3 — how much of any gain came from an alternate rather than the registered number |
+| MQ-3 | For each position, the share of dials to that position that were answered. | G2 |
 | MQ-4 | How long each frozen dial list was, and how many entries were dropped by dedupe or by the C-01 cap. | G3 · R3 · R4 · C-01 |
 | MQ-5 | How many runs ended Connected, Exhausted or Abandoned. | M1, M2, M3 definition · T4 · T5 |
 | MQ-6 | Whether any number dialled in a run was not held against the ticket's customer. | G4 invariant (R7) |
 | MQ-7 | Whether any run dialled something other than the registered number first. | G2 invariant (R2) |
 | MQ-8 | Whether any dial was placed to a number outside its validity window (C-02). | G5 invariant (R6) |
 | MQ-9 | How many active customers hold at least one live alternate number, and how that count is moving. | M1 · M2 · M3 — the covered share of the base is what explains a connect rate that does or does not move |
-| MQ-10 | For one call, the outcome of **every** number dialled, one row each — which number, at which position, and whether it answered, did not answer, was busy or could not be reached — with every row tied to that call by a single identifier, and to the ticket and customer. | M4 · G2 · G3 · G4 · G5 · underpins MQ-2 · MQ-3 · MQ-4 |
+| MQ-10 | For one call, the outcome of **every** number dialled — the registered number and each alternate tried — one row each: which number, at which position, whether that number was the registered one or an alternate, and whether it answered, did not answer, was busy or could not be reached. Every row is tied to that call by a single identifier, and to the ticket and customer. A number that was never reached because the run ended first has no row, so the record shows what was actually tried. | G2 · G3 · G4 · G5 · underpins MQ-2 · MQ-3 · MQ-4 |
 | MQ-11 | For each alternate number: where it came from, who entered or last changed it, when it was first and last seen, and every rejection that stopped one being stored. | R5 · R8b · R9 · N4 · the health of the capture path |
 | MQ-12 | For each call, which IVR entry path resolved the destination — app cache or entered PIN — so the fallback can be shown to behave the same on both. | G6 · R10 |
 
@@ -212,7 +214,7 @@ For authorised call-centre and ops users only.
 
 ## 7. Acceptance Criteria
 
-**Example data used throughout** ⚠️ *AI GENERATED — review* — customer Meena, registered number 09811100022. Alternates held against her: 09811100044 (last seen 20 Jul 2026) and 09811100055 (last seen 2 Feb 2026). CSP `CSP-4412`, technician Ravi, Service ticket `TKT-88231`. Calls on 12 Aug 2026, with C-01 = 3 and C-02 = 6 months.
+**Example data used throughout** — customer Meena, registered number 09811100022. Alternates held against her: 09811100044 (last seen 20 Jul 2026) and 09811100055 (last seen 2 Feb 2026). CSP `CSP-4412`, technician Ravi, Service ticket `TKT-88231`. Calls on 12 Aug 2026, with C-01 = 3 and C-02 = 6 months.
 
 ### DIAL — Building and running the dial list (T1, T6, T7)
 
@@ -270,7 +272,8 @@ For authorised call-centre and ops users only.
 | AC-OPS-3 | **Given** the same user, **When** they try to add 09811100022, Meena's registered number, **Then** it is refused with the reason, and her list is unchanged. | N4 · G3 | Settled |
 | AC-OPS-4 | **Given** an unauthorised internal user, **When** they open Meena's record, **Then** they can neither see nor change her number list. | R8a | Settled |
 | AC-OPS-5 | **Given** Meena holds 09811100055, expired on 2 Aug 2026, **When** an ops user views her list, **Then** it is shown as Expired with that date and marked as not going to be dialled — visible, not hidden. | N5 · G5 | Settled |
-| AC-OPS-6 | **Given** 09811100044 was answered on five separate calls, **When** an ops user views it, **Then** it still shows only its source and who entered it — no "verified" or "confirmed" standing has been earned by connecting, because answering proves someone picked up, not that the number is Meena's. | R9 · MQ-11 | Settled |
+| AC-OPS-6 | **Given** an ops user viewing Meena, **When** the list loads, **Then** 09811100044 and 09811100055 are masked, and neither appears in full until the user asks for that one number — at which point the reveal is recorded against them. | R11a · R11b · §4 | Settled |
+| AC-OPS-7 | **Given** 09811100044 was answered on five separate calls, **When** an ops user views it, **Then** it still shows only its source and who entered it — no "verified" or "confirmed" standing has been earned by connecting, because answering proves someone picked up, not that the number is Meena's. | R9 · MQ-11 | Settled |
 
 ### WF — Workflows
 
@@ -279,7 +282,11 @@ For authorised call-centre and ops users only.
 | AC-WF-1 | **Given** Meena holds both alternates, **When** Ravi calls at 15:20, the registered number does not answer and 09811100044 does, **Then** Ravi has spoken to Meena on one call, was never asked to redial, and `TKT-88231` counts as connected on the first alternate. | R1 · T1 · T3 · T2 · G1 | Settled |
 | AC-WF-2 | **Given** the same setup, **When** none of the three answers, **Then** exactly three numbers were dialled in that order, the run ends Exhausted, and `TKT-88231` counts as not connected. | T1 · T3 · T4 · M1 | Settled |
 | AC-WF-3 | **Given** Meena calls the call centre from 09811100066 on 12 Aug and is identified, **When** Ravi calls her on 13 Aug, **Then** 09811100066 is dialled as her freshest alternate, straight after the registered number — capture to use, end to end. | N1 · R4 · T1 | Settled |
-| AC-WF-4 | **Given** the run in AC-WF-1, **When** its record is examined, **Then** it holds **two** rows — 09811100022 at position 1, not answered; 09811100044 at position 2, answered — both under one call identifier and tied to Meena and `TKT-88231`, and 09811100055 has no row. | MQ-10 · T3 · T2 | Settled |
+| AC-WF-4 | **Given** the run in AC-WF-1, **When** its record is examined, **Then** it holds **two** rows — 09811100022 at position 1, not answered; 09811100044 at position 2, answered — both under one call identifier and tied to Meena and `TKT-88231`, and 09811100055 has no row because it was never tried. | MQ-10 · T3 · T2 | Settled |
+| AC-WF-5 | **Given** the run in AC-WF-2 where none of the three answered, **When** its record is examined, **Then** it holds **three** rows in dial order, each naming its number, its position and its own outcome, all under one call identifier — three separate misses, not one summary. | MQ-10 · T3 · T4 | Settled |
+| AC-WF-6 | **Given** each row of the run in AC-WF-1, **When** it is read, **Then** it says whether that number was Meena's registered number or an alternate — so the registered number's own answer rate can be told apart from the alternates'. | MQ-10 · MQ-2 · MQ-3 | Settled |
+| AC-WF-7 | **Given** Ravi called Meena at 15:20 and again at 15:45, **When** both calls are examined, **Then** each has its own call identifier and its rows belong to exactly one of them — the two calls' dials are never mixed, and a number tried on both appears once under each. | MQ-10 · T1 | Settled |
+| AC-WF-8 | **Given** a customer with no alternate at all, **When** a CSP calls and the registered number does not answer, **Then** the record still holds one row for that single dial — a run with no fallback is recorded the same way as one with it. | MQ-10 · T6 | Settled |
 
 ### FAIL — Failure envelopes (T7)
 
@@ -376,20 +383,9 @@ What the platform must be able to do for this feature to exist. Whether these ar
 | End a run the moment the CSP disconnects, dialling nothing further; bridge to exactly one number even when an answer and an advance coincide. | T5 · T2 · precedence 1 · precedence 2 |
 | Fall back to the registered number alone when the list cannot be resolved, without failing the call. | T7 |
 | Let authorised internal users read and change one customer's number list, with every change attributed to a named user, and keep everyone else out. | N3 · R8 · §4 |
-| Give each run an identifier and record one row per number dialled — the number, its position and its outcome — tied to the customer and ticket. | MQ-10 |
+| Give each run an identifier and record one row per number dialled — the number, its position, whether it was the registered number or an alternate, and its outcome — tied to the customer and ticket, so every try is separately visible. | MQ-10 |
 | Report coverage across the customer base, and the health of the capture path including rejections. | MQ-9 · MQ-11 |
 | Turn the fallback off without a release, and change C-01 and C-02 without a release. | C-01 · C-02 · C-03 |
-
----
-
-## AI-generated content for review
-
-| Location | What was generated | Basis |
-|---|---|---|
-| §1 M3 target | "≥ 75.8% — any gain is upside; a fall below baseline is a regression" | Default, mirroring the escalation-chain PRD: install is in scope for upside, so no committed uplift, but it must not go backwards. |
-| §1 M4 target | "No family falls below 90%" | Default. The counter-metric mirrors the escalation-chain PRD; the 90% floor is not yours. |
-| §4 | Alternate numbers shown in full rather than masked | The portal exists so an authorised user can correct a number, which is confirmed. Whether they see the digits in full is not — full is assumed because correcting a number you cannot read is impossible. Change this if these users must see masked numbers. |
-| §7 | The example dataset — Meena, her four numbers, the dates, `CSP-4412`, `TKT-88231` | Invented. ACs need concrete data to be executable. |
 
 ---
 
