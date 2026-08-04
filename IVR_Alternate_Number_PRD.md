@@ -3,7 +3,7 @@
 | | | | |
 |---|---|---|---|
 | **Owner** — Ashish Raj (PM) | **Reviewer** — Rahul (Eng Lead) | **Status** — Signed off | **Sign-off** — Signed off · 4 Aug 2026 |
-| **Version** — v1.0 · 4 Aug 2026 | | | |
+| **Version** — v1.1 · 4 Aug 2026 | | | |
 
 ---
 
@@ -12,6 +12,15 @@
 **Objective.** A CSP who calls a customer about their installation, restore or pickup ticket reaches that customer — if the registered number does not answer, the call moves on by itself to another number the customer has told us they are reachable on, and the customer's chances of being reached increase.
 
 **Boundary.** This spec governs **CSP-initiated** IVR calls on Install, Service (restore) and Pickup tickets — every ticket family the IVR serves — at every CSP where IVR 2.0 is live. It covers two things: **holding** a customer's alternate numbers, and **using** them as the destination when a CSP calls out.
+
+**A number reaches the list two ways in this version, and only two.**
+
+| Source | How a number arrives | Governed by |
+|---|---|---|
+| **Capture** | An agent tags an alternate number against the customer's registered number on a service ticket. However the agent learned it — the customer called from it, or simply gave it — the registered number is what ties it to one customer. | R5 · N1 |
+| **Ops** | An authorised internal user adds a number by hand in the internal portal. | R8 · N3 |
+
+Ops also **edits and deletes any number the customer holds, whatever its source** — a Capture-tagged number is as editable as an ops-entered one (R8b). Every number keeps its source, so where it came from is always visible even after ops changes it.
 
 **It enriches whom to dial, and changes nothing about how the IVR decides.** IVR 2.0 resolves the destination two ways: from the app, a cached mapping for that call; from an unknown number, the PIN the caller enters. This spec touches neither. It only enriches what that resolution produces — where one number stood, an ordered list of the customer's numbers stands — and it does so identically whichever way the call arrived (R10, AC-PIN-1).
 
@@ -23,7 +32,7 @@ It leaves unchanged:
 - **What the CSP is told** — the CSP is not told which number answered, or that any alternate exists. Out of scope (AC-REG-4).
 - **Call-status recording** — every call status Exotel returns is still recorded for each individual call, exactly as today. This spec adds to that record, it does not replace or reshape it (AC-REG-5).
 - **Ring durations** — how long each number rings, and the total ringing a CSP hears, are Exotel applet configuration, not parameters of this spec (see Overrides).
-- **Collecting alternate numbers anywhere but Capture** — the Customer App may offer a customer their own number list one day. Not in this version (AC-REG-6).
+- **Any source beyond Capture and Ops** — a customer entering their own number in the Customer App, or any other channel, is a later version. When one is added it becomes a third source feeding the same list; nothing else in this spec changes (AC-REG-6).
 
 ### Guardrails — promises that hold on every path
 
@@ -70,10 +79,10 @@ Install has the least room to gain of the three families, and that is expected. 
 | R2 | As a customer, I want my main number tried first — it is the one I gave you. | Dial the registered number first on every call (G2). | Skip, reorder or replace the registered number, ever. |
 | R3 | As a customer who once called from my own main number, I do not want that number rung twice in one call. | Dial each distinct number once; where an alternate duplicates the registered number or another alternate, shorten the run (G3). | Dial the same number more than once in one call. |
 | R4 | As a customer, I want my most recent number tried before my older ones — it is the one most likely to still be mine. | Order alternates by when each was last seen, newest first, and dial at most C-01 numbers in total. | Dial alternates in the order they were stored, at random, or beyond C-01. |
-| R5 | As a customer who rings the call centre from a different phone, I want that number remembered so you can reach me on it. | **(a)** When a customer is identified on a Capture ticket by their registered number after calling from another number, store that calling number as an alternate against that customer, as structured data. **(b)** Where that number is already held, refresh how recently it was seen rather than storing it again. | Store a number as an alternate without knowing which customer it belongs to. |
+| R5 | As a customer who tells an agent another number I am reachable on, I want that number remembered so you can reach me on it. | **(a)** When an agent tags an alternate number against a customer's registered number on a Capture ticket, store it as an alternate for that customer, as structured data. **(b)** Where that number is already held for them, refresh how recently it was seen rather than storing it again. | **(a)** Store a number as an alternate without a registered number tying it to one customer. **(b)** Require the customer to be calling from the number for it to be stored — an agent may tag a number the customer simply told them. |
 | R6 | As a customer, I do not want a number I used once a year ago rung today — it may not be mine any more. | Treat an alternate as usable only within C-02 of when it was last seen, and never dial one outside that window (G5). | Dial an expired number, even when no other alternate exists. |
 | R7 | As a customer, I want only my own numbers dialled about my job. | Restrict every dial to numbers held against the customer who owns the ticket (G4). | Dial another customer's number, the CSP's own number, or any number not held against this customer. |
-| R8 | As an ops user, I need to add, correct or remove a customer's alternate number when I learn it is right or wrong. | **(a)** Let an authorised internal user add, update and remove a customer's alternate numbers. **(b)** Record who made each change and when. | Let a change be made without an identified user attached to it. |
+| R8 | As an ops user, I need to add, correct or remove a customer's alternate number when I learn it is right or wrong. | **(a)** Let an authorised internal user add, update and remove a customer's alternate numbers. **(b)** Let them act on **any** number the customer holds, whatever its source — a number tagged in Capture is as editable as one ops entered. **(c)** Record who made each change and when. | **(a)** Let a change be made without an identified user attached to it. **(b)** Protect a number from ops because of where it came from. |
 | R9 | As the business, I need to know that a number we hold is our responsibility to get right. | Treat whoever entered a number — system or ops — as accountable for it being the right customer's number. | Assume a stored number is correct because it was dialled successfully before. |
 | R10 | As a CSP who reached the customer through the IVR by dialling back and entering a PIN, I want the same fallback I get from the app. | Build and use the same destination list however the IVR resolved the destination — from the app's cached mapping or from an entered PIN (G6). | **(a)** Apply the fallback on one entry path and not the other. **(b)** Change how the app cache or the PIN resolves a destination, or what a PIN means. |
 | R11 | As a customer, I do not want my phone numbers on an internal screen for anyone who happens to be looking at it. | **(a)** Mask a stored number in the internal portal, showing it in full only when the user asks for that one number. **(b)** Record each reveal against the user who asked. | Show full numbers by default, or reveal a number as a side effect of viewing, searching or editing the list. |
@@ -139,9 +148,9 @@ Each outbound call creates its own run; no state carries between calls.
 
 | ID | From | Action / Trigger | Rule / Check | To | Side-effects |
 |---|---|---|---|---|---|
-| N1 | — | A customer is identified on a Capture ticket by their registered number, having called from another number | The calling number differs from the customer's registered number and from every number already held for them | Live | Number stored against that customer as structured data, with when it was first and last seen (R5a). Becomes dialable immediately, ordered newest-first (R4). Source and the entering party recorded (R9, MQ-11). |
+| N1 | — | An agent tags an alternate number against a customer's registered number on a Capture ticket | The tagged number differs from that customer's registered number and from every number already held for them | Live | Number stored against that customer as structured data, with when it was first and last seen (R5a). Becomes dialable immediately, ordered newest-first (R4). Source recorded as **Capture**, with the agent who tagged it (R9, MQ-11). How the agent learned the number is theirs to judge — the customer may have called from it or simply given it (R5 must-not(b)). |
 | N2 | Live or Expired | The same customer is identified again having called from a number already held for them | — | Live | Last-seen refreshed; the validity window (C-02) restarts from now (R5b). An expired number returns to Live. Its position in the freshness order rises. |
-| N3 | Live or Expired | An authorised internal user adds, updates or removes the number in the ops portal | The user is identified | Live, or Removed | The change takes effect on the next call (R8a). The acting user and the time are recorded (R8b, MQ-11). A removed number is never dialled again unless re-added. |
+| N3 | Live or Expired | An authorised internal user adds, updates or removes the number in the ops portal | The user is identified | Live, or Removed | The change takes effect on the next call (R8a). Source recorded as **Ops** for an added number; for one changed or removed, the acting user and time are recorded against it and its original source is kept (R8c, MQ-11). Applies to any number the customer holds, whatever its source (R8b). A removed number is never dialled again unless re-added. |
 | N4 | — | A calling number is offered for storage | It equals the customer's registered number, or is not a valid mobile number | Not stored | Rejected, so the registered number can never be dialled twice in one run (G3). The rejection is recorded so a broken capture path is visible (MQ-11). |
 | N5 | Live | C-02 elapses since the number was last seen | — | Expired | Never dialled again (R6, G5) unless it returns via N2 or N3. It is retained, not deleted, so its history stays visible in the ops portal. |
 
@@ -167,7 +176,7 @@ For authorised call-centre and ops users only.
 | Field — last seen | alternate number · last-seen | drives the order and the expiry countdown (C-02) |
 | Field — status | computed | Live, or Expired with the date it expired (N5); expired entries stay visible but are visibly not dialable (G5) |
 | Field — will be dialled | computed | marks the numbers that would actually be used on the next call — the first C-01 live, distinct entries (R3, R4) |
-| Field — source | alternate number · source | how it arrived: a customer call into Capture (N1), or an ops entry with the user's name (N3, R9) |
+| Field — source | alternate number · source | which of the two sources it came from — Capture with the agent who tagged it, or Ops with the user who entered it (N1, N3, R9); a number changed by ops still shows its original source (R8c) |
 | Action — reveal number | — | shows one number in full, on the user's explicit action (R11a); each reveal is recorded (R11b) |
 | Action — add number | N3 via §3a | for an authorised user only |
 | Action — update number | N3 via §3a | for an authorised user only |
@@ -249,11 +258,12 @@ For authorised call-centre and ops users only.
 
 | AC | Given / When / Then | Verifies | Status |
 |---|---|---|---|
-| AC-CAP-1 | **Given** Meena calls the call centre from 09811100066, a number not held for her, **When** the agent identifies her by entering her registered number 09811100022 on the Capture ticket, **Then** 09811100066 is stored against Meena as a structured alternate, first-seen and last-seen 12 Aug 2026, and is dialable on her next call. | R5a · N1 | Settled |
-| AC-CAP-2 | **Given** the same call but from 09811100044, which Meena already holds with last-seen 20 Jul 2026, **When** she is identified, **Then** no second entry is created; last-seen becomes 12 Aug 2026 and 09811100044 becomes her freshest alternate. | R5b · N2 | Settled |
-| AC-CAP-3 | **Given** Meena calls from 09811100022, her own registered number, **When** she is identified, **Then** nothing is stored as an alternate, and the rejection is recorded. | N4 · G3 · MQ-11 | Settled |
-| AC-CAP-4 | **Given** 09811100055 expired on 2 Aug 2026, **When** Meena calls from it on 12 Aug 2026 and is identified, **Then** it returns to Live with last-seen 12 Aug 2026 and is dialable again. | N2 · N5 | Settled |
-| AC-CAP-5 | **Given** a call arrives from a number that cannot be tied to any customer, **When** the ticket is handled, **Then** nothing is stored — a number is never held without knowing whose it is. | R5 must-not · N1 | Settled |
+| AC-CAP-1 | **Given** Meena calls the call centre and gives 09811100066 as another number she is reachable on, **When** the agent tags it against her registered number 09811100022 on the Capture ticket, **Then** 09811100066 is stored against Meena as a structured alternate with source Capture, first-seen and last-seen 12 Aug 2026, and is dialable on her next call. | R5a · N1 | Settled |
+| AC-CAP-2 | **Given** the agent tags 09811100044, which Meena already holds with last-seen 20 Jul 2026, **When** the ticket is saved, **Then** no second entry is created; last-seen becomes 12 Aug 2026 and 09811100044 becomes her freshest alternate. | R5b · N2 | Settled |
+| AC-CAP-3 | **Given** an agent tags 09811100022, Meena's own registered number, as an alternate, **When** the ticket is saved, **Then** nothing is stored as an alternate, and the rejection is recorded. | N4 · G3 · MQ-11 | Settled |
+| AC-CAP-4 | **Given** 09811100055 expired on 2 Aug 2026, **When** an agent tags it again on 12 Aug 2026, **Then** it returns to Live with last-seen 12 Aug 2026 and is dialable again. | N2 · N5 | Settled |
+| AC-CAP-5 | **Given** an agent tags a number on a ticket carrying no registered number to tie it to a customer, **When** the ticket is saved, **Then** nothing is stored — a number is never held without knowing whose it is. | R5 must-not(a) · N1 | Settled |
+| AC-CAP-6 | **Given** Meena tells an agent about 09811100088 during a call she made from her registered number, **When** the agent tags it against 09811100022, **Then** it is stored — the customer does not have to be calling from a number for it to be held. | R5 must-not(b) · N1 | Settled |
 
 ### PIN — Both IVR entry paths (R10)
 
@@ -274,6 +284,9 @@ For authorised call-centre and ops users only.
 | AC-OPS-5 | **Given** Meena holds 09811100055, expired on 2 Aug 2026, **When** an ops user views her list, **Then** it is shown as Expired with that date and marked as not going to be dialled — visible, not hidden. | N5 · G5 | Settled |
 | AC-OPS-6 | **Given** an ops user viewing Meena, **When** the list loads, **Then** 09811100044 and 09811100055 are masked, and neither appears in full until the user asks for that one number — at which point the reveal is recorded against them. | R11a · R11b · §4 | Settled |
 | AC-OPS-7 | **Given** 09811100044 was answered on five separate calls, **When** an ops user views it, **Then** it still shows only its source and who entered it — no "verified" or "confirmed" standing has been earned by connecting, because answering proves someone picked up, not that the number is Meena's. | R9 · MQ-11 | Settled |
+| AC-OPS-8 | **Given** 09811100044 arrived from Capture, **When** an authorised ops user corrects a digit and saves, **Then** the change is accepted — a Capture-sourced number is as editable as an ops-entered one — and the record shows it came from Capture and was last changed by that user. | R8b · R8c · N3 | Settled |
+| AC-OPS-9 | **Given** 09811100044 arrived from Capture, **When** an authorised ops user removes it, **Then** it is never dialled again, and its Capture origin stays visible alongside who removed it. | R8b · R8c · N3 | Settled |
+| AC-OPS-10 | **Given** an ops user removed 09811100044 on 12 Aug, **When** an agent tags that same number again on 20 Aug, **Then** it returns to the list as a fresh entry — an ops removal ends the number's current life, it does not blacklist it. | N3 · N1 · N2 | Settled |
 
 ### WF — Workflows
 
@@ -356,12 +369,12 @@ For authorised call-centre and ops users only.
 
 | Term | Meaning | Owner (domain) |
 |---|---|---|
-| Alternate number | **Canonical definition:** a phone number, held against one customer, that the customer has themselves indicated they are reachable on — in this version, by calling the call centre from it and then being identified by their registered number. It is not a family member's or neighbour's number by intent, and whoever entered it, system or ops, is accountable for it being the right customer's (R9). Carries: the customer it belongs to, the number, when it was first and last seen, its source, who last changed it, and its status (Live, Expired, Removed). | — |
+| Alternate number | **Canonical definition:** a phone number, held against one customer, that the customer has indicated they are reachable on. It reaches the list from exactly two sources in this version — Capture or Ops (§1 Boundary) — and always carries which one. It is not a family member's or neighbour's number by intent, and whoever entered it, system or ops, is accountable for it being the right customer's (R9). Carries: the customer it belongs to, the number, when it was first and last seen, its source, who last changed it, and its status (Live, Expired, Removed). | — |
 | Registered number | The customer's primary number on their Wiom account. Always dialled first, never reordered or replaced by this spec (G2, R2). | — |
 | Fallback run | **Canonical definition:** the ordered list of distinct numbers dialled for one outbound CSP call, and the act of moving down it when a number does not answer. Created per call, with its list frozen at bridge time. Carries: its own identifier, the ticket and customer, the frozen list, the position that answered if any, and the end state (Connected / Exhausted / Abandoned). | — |
 | Freshness | How recently a number was last seen for that customer. It decides dial order — newest first (R4) — and, via C-02, whether the number is usable at all. | — |
 | Live · Expired · Removed | A number's status. **Live**: seen within C-02, dialable. **Expired**: not seen within C-02, retained and visible but never dialled (G5); returns to Live if seen again. **Removed**: taken off by ops, never dialled unless re-added. | — |
-| Capture | The internal platform where agents create and handle customer service tickets. The only source of alternate numbers in this version. | Support/Ops |
+| Capture | The internal platform where agents create and handle customer service tickets. One of the two sources of alternate numbers in this version; the other is Ops (§1 Boundary). | Support/Ops |
 | Ticket-level connect rate | **Canonical definition:** of tickets that had at least one call in the chosen direction and window, the share where at least one of those calls was answered by a person. A ticket counts once however many calls it had. Any answered call counts, however short. Not to be confused with call-level connect rate, which is per call. Comparisons must never mix the two grains. | — |
 | Exhausted | A run where every number in the frozen list was dialled and none answered. Counts as not connected. | — |
 | Abandoned | A run where the CSP disconnected before any number answered. Counts as not connected. | — |
