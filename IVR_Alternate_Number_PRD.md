@@ -3,7 +3,7 @@
 | | | | |
 |---|---|---|---|
 | **Owner** — Ashish Raj (PM) | **Reviewer** — Rahul (Eng Lead) | **Status** — Draft | **Sign-off** — Pending |
-| **Version** — v0.3 · 4 Aug 2026 | | | |
+| **Version** — v0.4 · 4 Aug 2026 | | | |
 
 ---
 
@@ -147,13 +147,13 @@ Each outbound call creates its own run; no state carries between calls.
 
 ## 4. Screen Requirements
 
-**Experience intent:** neither the customer nor the CSP notices anything. The one screen this spec adds is for internal staff, and its job is to make a customer's number list correct and accountable — every entry showing where it came from, who last touched it, and whether it is still usable.
+**Experience intent:** neither the customer nor the CSP notices anything. The one screen this spec adds is internal, and it exists so an authorised user can correct a customer's alternate number when they need to.
 
-**Master design file:** none yet — a named gap. The ops portal needs a design before build. ⚠️ *AI GENERATED — review*
+**No design file is required.** This is an internal portal, so the table below states what it must show and do, and the implementer chooses how it looks. Nothing here waits on design.
 
-### Customer number list — ops portal
+### Customer number list — internal portal
 
-Internal screen, for authorised call-centre and ops users only.
+For authorised call-centre and ops users only.
 
 **States:** has numbers (one or more alternates held, live or expired) · empty (registered number only) · not found (no customer matches the search) · saving (a change submitted, not yet confirmed)
 **Freshness:** on open, and after any change the user makes
@@ -385,11 +385,7 @@ What the platform must be able to do for this feature to exist. Whether these ar
 |---|---|---|
 | §1 M1 target | 25% coverage within 6 months of launch | Invented. No target was discussed. Coverage is the gating metric, so this number needs your judgement most — it should be whatever makes the routing half worth building. |
 | §1 M4 target | "No family falls below 90%" | Default. The counter-metric was carried over from the escalation-chain PRD; the 90% floor is not yours. |
-| §4 | The whole ops-portal screen block, and showing numbers in full rather than masked | Inferred. You said the portal is for internal call-centre or ops staff but not what they see. Full numbers assumed because they must verify and correct them; if these users should not see full numbers, this block changes. |
-| §4 | "No master design file — a named gap" | The portal has no design yet. Flagged rather than assumed away. |
-| §5 C-01 range | 1–5 | Default. You fixed the value at 3 and said make it configurable, but not the bounds. |
-| §5 C-02 default and range | 6 months, 1–24 months | You said "say 6 months", which I read as a starting point rather than a settled value. The range is mine. |
-| §5 C-03 | Kill switch, Eng as joint owner | Default, mirroring the escalation-chain PRD. |
+| §4 | Alternate numbers shown in full rather than masked | The portal exists so an authorised user can correct a number, which is confirmed. Whether they see the digits in full is not — full is assumed because correcting a number you cannot read is impossible. Change this if these users must see masked numbers. |
 | §7 | The example dataset — Meena, her four numbers, the dates, `CSP-4412`, `TKT-88231` | Invented. ACs need concrete data to be executable. |
 
 ---
