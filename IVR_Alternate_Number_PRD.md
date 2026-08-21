@@ -3,7 +3,7 @@
 | | | | |
 |---|---|---|---|
 | **Owner** — Ashish Raj (PM) | **Reviewer** — Rahul (Eng Lead) | **Status** — Signed off | **Sign-off** — Signed off · 5 Aug 2026 |
-| **Version** — v2.4 · 5 Aug 2026 | | | |
+| **Version** — v2.5 · 5 Aug 2026 | | | |
 
 ---
 
@@ -84,14 +84,14 @@ flowchart TD
     E -- "No" --> F["T7 — registered number only"]
     E -- "Yes" --> G{"Store returns an alternate, within C-01?"}
     G -- "No" --> H["T6 — registered number only"]
-    G -- "Yes" --> I["T1 — dial position 1, alternate held in the frozen list"]
+    G -- "Yes" --> I["T1 — dial position 1, alternate kept for position 2"]
     F --> J{"Answers?"}
     H --> J
     I --> J
     J -- "Yes" --> K["T2 — connected"]
     J -- "No" --> L{"CSP still on the line?"}
     L -- "No" --> M["T5 — abandoned"]
-    L -- "Yes" --> N{"A further position left in the frozen list?"}
+    L -- "Yes" --> N{"A further position left in the list read at the start?"}
     N -- "No" --> O["T4 — exhausted"]
     N -- "Yes" --> P["T3 — dial the next position"]
     P --> J
@@ -101,7 +101,7 @@ flowchart TD
 
 **Precedence — one bridged leg only.** If a ringing number answers while the run is advancing past it, the call bridges to exactly one number (T2, AC-RACE-2).
 
-**Precedence — the list is frozen when the run begins.** A list resolved at the start of a run is used to the end of that run; a change in the store mid-run does not alter it, and applies from the next run (AC-RACE-3).
+**Precedence — the list is read once, at the start of the run.** The numbers read when a run begins are the numbers it dials to the end; a change in the store mid-run does not alter that run, and applies from the next one (AC-RACE-3).
 
 ### 3b. State transition table — canon
 
@@ -109,9 +109,9 @@ Lifecycle of a **fallback run**, created when a CSP-initiated call resolves to a
 
 | ID | From | Action / Trigger | Rule / Check | To | Side-effects |
 |---|---|---|---|---|---|
-| T1 | — | CSP-initiated call resolved to a customer and an in-scope ticket | Fallback enabled (C-02); the store returns at least one alternate for that customer | Ringing position 1 | Registered number dialled first (R2, G2). The dial list is resolved and frozen **at this moment — when this call is placed, not when the ticket was created and not when an earlier call on the same active ticket was placed** (R6): registered number, then the alternates the store returned now, in its order, capped at C-01 (R3). List length recorded (MQ-4). |
+| T1 | — | CSP-initiated call resolved to a customer and an in-scope ticket | Fallback enabled (C-02); the store returns at least one alternate for that customer | Ringing position 1 | Registered number dialled first (R2, G2). The store is read **at this moment — when this call is placed, not when the ticket was created and not when an earlier call on the same active ticket was placed** (R6). What it returns now is what this run dials, and it is not read again during the run (precedence 3): registered number, then the alternates the store returned now, in its order, capped at C-01 (R3). List length recorded (MQ-4). |
 | T2 | Ringing position N | The ringing number answers | — | Connected | Call bridged (R1b). Which position answered, and whether it was the registered number or the alternate, recorded (MQ-2, MQ-9). Terminal. |
-| T3 | Ringing position N | The ringing number does not answer (§8) | A further position remains in the frozen list | Ringing position N+1 | Next number dialled (R3), and not before the current dial has finished. No CSP action, no announcement, no reconnection (R1, G1). |
+| T3 | Ringing position N | The ringing number does not answer (§8) | A further position remains in the list this run read | Ringing position N+1 | Next number dialled (R3), and not before the current dial has finished. No CSP action, no announcement, no reconnection (R1, G1). |
 | T4 | Ringing position N | The ringing number does not answer (§8) | No further position remains | Exhausted | Existing unconnected-call handling applies. Ticket counted as not connected (M1, M2, MQ-5). Terminal. |
 | T5 | Ringing position N | The CSP disconnects | — | Abandoned | Run ends; no further number is dialled. Ticket counted as not connected (M1, M2, MQ-5). Terminal. |
 | T6 | — | CSP-initiated call resolved to a customer and an in-scope ticket | The store returns no alternate for that customer | Ringing position 1 | One dial only, to the registered number. No answer routes to T4, not T3. **The common case wherever coverage is low** (MQ-8). |
@@ -145,7 +145,7 @@ The one screen that touches alternate numbers is the internal portal that manage
 | MQ-1 | Of in-scope tickets with at least one CSP-initiated call, what share had at least one call where a person answered — split by ticket family. Abandoned runs count as not connected. | M1 · M2 |
 | MQ-2 | For each run, which position answered — registered, alternate, or none. | G1 · M1 · M2 |
 | MQ-3 | For each position, the share of dials to that position that were answered. | G2 · how much of any gain came from the alternate |
-| MQ-4 | How long each frozen dial list was, and how many numbers the store returned that C-01 excluded. | R3 · C-01 |
+| MQ-4 | How many numbers each run dialled, and how many the store returned that C-01 excluded. | R3 · C-01 |
 | MQ-5 | How many runs ended Connected, Exhausted or Abandoned. | M1, M2 definition · T4 · T5 |
 | MQ-6 | Whether any number dialled in a run was not held by the store against that ticket's customer. | G3 invariant (R4) |
 | MQ-7 | Whether any run dialled something other than the registered number first. | G2 invariant (R2) |
@@ -165,11 +165,11 @@ The one screen that touches alternate numbers is the internal portal that manage
 
 | AC | Given / When / Then | Verifies | Status |
 |---|---|---|---|
-| AC-DIAL-1 | **Given** the store returns 09811100044 for Meena, **When** Ravi calls her on `TKT-88231` at 15:20, **Then** the frozen dial list is exactly 09811100022 at position 1 and 09811100044 at position 2. | R2 · R3 · T1 · G2 | Settled |
-| AC-DIAL-2 | **Given** the store returns no alternate for Meena, **When** Ravi calls her, **Then** the frozen dial list is exactly 09811100022 at position 1, and no position 2 exists. | T6 · G2 | Settled |
-| AC-DIAL-3 | **Given** the store returns an error, or does not answer in time to be used, when asked for Meena's numbers, **When** Ravi's call is bridged, **Then** the frozen dial list is exactly 09811100022, and the call is bridged rather than failed. | T7 | Settled |
+| AC-DIAL-1 | **Given** the store returns 09811100044 for Meena, **When** Ravi calls her on `TKT-88231` at 15:20, **Then** 09811100022 is dialled first and, if it does not answer, 09811100044 second — and no other number is dialled. | R2 · R3 · T1 · G2 | Settled |
+| AC-DIAL-2 | **Given** the store returns no alternate for Meena, **When** Ravi calls her, **Then** exactly one dial is placed, to 09811100022. | T6 · G2 | Settled |
+| AC-DIAL-3 | **Given** the store returns an error, or does not answer in time to be used, when asked for Meena's numbers, **When** Ravi's call is bridged, **Then** exactly one dial is placed, to 09811100022, and the call is bridged rather than failed. | T7 | Settled |
 | AC-DIAL-4 | **Given** a Pickup ticket for Meena and 09811100044 returned for her, **When** a CSP calls her on that ticket, **Then** a two-position dial list is built — Pickup is in scope. | T1 · M2 · §1 Boundary | Settled |
-| AC-DIAL-5 | **Given** `TKT-88231` was created on 10 Aug 2026 when the store held no alternate for Meena, 09811100044 was added on 11 Aug, and the ticket is still active, **When** Ravi calls her on 12 Aug, **Then** the frozen dial list is 09811100022 at position 1 and 09811100044 at position 2 — the number is used even though it arrived after the ticket. | R6 · T1 | Settled |
+| AC-DIAL-5 | **Given** `TKT-88231` was created on 10 Aug 2026 when the store held no alternate for Meena, 09811100044 was added on 11 Aug, and the ticket is still active, **When** Ravi calls her on 12 Aug, **Then** 09811100044 is dialled at position 2 — the number is used even though it arrived after the ticket. | R6 · T1 | Settled |
 | AC-DIAL-6 | **Given** Ravi called Meena on 12 Aug about `TKT-88231` when the store held 09811100044, **When** the stored alternate is changed to 09811100066 and Ravi calls again on 13 Aug about the same still-active ticket, **Then** the second run's position 2 is 09811100066 and 09811100044 is not dialled — every call on an active ticket takes the latest stored number. | R6 · R6 must-not(b) · T1 | Settled |
 
 ### FB — Falling back and connecting (T2, T3)
@@ -197,8 +197,8 @@ The one screen that touches alternate numbers is the internal portal that manage
 
 | AC | Given / When / Then | Verifies | Status |
 |---|---|---|---|
-| AC-RES-1 | **Given** the store returns 09811100044 for Meena, **When** Ravi dials the masked number and enters the PIN for `TKT-88231`, **Then** the frozen dial list is 09811100022 at position 1 and 09811100044 at position 2 — the same list as AC-DIAL-1, where he called from the app. | R5 · G4 · T1 | Settled |
-| AC-RES-2 | **Given** the store returns 09811100044 for Meena and `TKT-88231` is Ravi's only active ticket, **When** he dials the masked number from his phone's dialer and enters no PIN, **Then** the frozen dial list is 09811100022 at position 1 and 09811100044 at position 2 — the same list again. | R5 · G4 · T1 | Settled |
+| AC-RES-1 | **Given** the store returns 09811100044 for Meena, **When** Ravi dials the masked number and enters the PIN for `TKT-88231`, **Then** the numbers dialled, and their order, are the same as AC-DIAL-1, where he called from the app. | R5 · G4 · T1 | Settled |
+| AC-RES-2 | **Given** the store returns 09811100044 for Meena and `TKT-88231` is Ravi's only active ticket, **When** he dials the masked number from his phone's dialer and enters no PIN, **Then** the numbers dialled, and their order, are the same again. | R5 · G4 · T1 | Settled |
 | AC-RES-3 | **Given** Ravi's no-PIN dialer call from AC-RES-2, **When** 09811100022 does not answer, **Then** 09811100044 is dialled — the fallback is not limited to app-originated or PIN-entered calls. | R5 must-not(a) · T3 · G4 | Settled |
 | AC-RES-4 | **Given** a call resolved by any of the three paths, **When** the IVR names the customer and ticket, **Then** the customer whose numbers are dialled is the customer on that ticket, and nothing about how the path reached that answer differs from IVR 2.0 today. | R5 must-not(b) · §1 Boundary | Settled |
 
@@ -237,14 +237,14 @@ The one screen that touches alternate numbers is the internal portal that manage
 |---|---|---|---|
 | AC-RACE-1 | **Given** 09811100022 is ringing at position 1 and the run has determined that position 2 exists, **When** Ravi disconnects before the dial to position 2 is placed, **Then** no dial is placed to 09811100044 and the run's end state is Abandoned. | T5 · precedence 1 | Settled |
 | AC-RACE-2 | **Given** the run is advancing from position 1 to position 2, **When** 09811100022 answers after the advance has begun but before the dial to position 2 has connected, **Then** exactly one bridged leg exists for the call. | T2 · precedence 2 | Settled |
-| AC-RACE-3 | **Given** a run is in flight with 09811100044 in its frozen list, **When** that number is removed from the store before the run reaches position 2, **Then** the run still dials 09811100044, and the next run for Meena does not. | precedence 3 · T1 | Settled |
+| AC-RACE-3 | **Given** a run is in flight and 09811100044 was in the list it read when it began, **When** that number is removed from the store before the run reaches position 2, **Then** the run still dials 09811100044, and the next run for Meena does not. | precedence 3 · T1 | Settled |
 
 ### DUP — Duplicate triggers
 
 | AC | Given / When / Then | Verifies | Status |
 |---|---|---|---|
 | AC-DUP-1 | **Given** Ravi's call at 15:20 ended Exhausted, **When** he calls Meena again at 15:45, **Then** the new run's position 1 is 09811100022. | R2 · T1 · G2 | Settled |
-| AC-DUP-2 | **Given** two CSPs call Meena on two different tickets while neither run has ended, **When** both runs proceed, **Then** each dials its own frozen list, and neither run's outcome changes the other's list or end state. | T1 | Settled |
+| AC-DUP-2 | **Given** two CSPs call Meena on two different tickets while neither run has ended, **When** both runs proceed, **Then** each run dials its own numbers, and neither run's outcome changes what the other dials or how it ends. | T1 | Settled |
 
 ### BV — Boundary values (C-01)
 
@@ -266,7 +266,7 @@ The one screen that touches alternate numbers is the internal portal that manage
 | AC-GRD-1 | **Given** every run in a week that reached position 2, **When** each call's record is examined, **Then** none played an announcement to the CSP, none requested a keypress, and none shows the call disconnected and re-established. | G1 · R1 | Settled |
 | AC-GRD-2 | **Given** every run in a week, **When** the first dial of each is checked, **Then** every one was placed to that customer's registered number. | G2 · R2 · MQ-7 | Settled |
 | AC-GRD-3 | **Given** every run in a week, **When** every number dialled is checked against what the store holds for that run's customer, **Then** all of them are held for that customer, and none is another customer's or the CSP's own. | G3 · R4a · MQ-6 | Settled |
-| AC-GRD-4 | **Given** the same customer and their single active ticket, **When** three calls are placed — one from the app, one by dialling back and entering the PIN, and one from the dialer with no PIN — **Then** all three frozen dial lists hold the same numbers in the same positions. | G4 · R5 · MQ-10 | Settled |
+| AC-GRD-4 | **Given** the same customer and their single active ticket, **When** three calls are placed — one from the app, one by dialling back and entering the PIN, and one from the dialer with no PIN — **Then** all three calls dialled the same numbers in the same order. | G4 · R5 · MQ-10 | Settled |
 
 ---
 
@@ -276,10 +276,10 @@ The one screen that touches alternate numbers is the internal portal that manage
 |---|---|---|
 | Alternate number | An additional phone number the store holds against a customer, existing so a call can be connected to them when their registered number does not answer. Defined in full — including how it gets there, who may change it, and whether it is still fit to use — by the **Customer Alternate Number Store PRD**. This spec only reads it, and dials what it returns. | Customer |
 | Registered number | The customer's primary number on their Wiom account. Always position 1, never reordered or replaced by this spec (G2, R2). | Customer |
-| Fallback run | **Canonical definition:** the ordered list of numbers dialled for one outbound CSP call, and the act of moving down it when a number does not answer. Created per call, with its list resolved from the store at the moment that call is placed and frozen for the rest of that run (R6). An active ticket may have many runs over its life, and each resolves its own list afresh. Carries: its own identifier, the ticket and customer, the frozen list, the position that answered if any, and the end state. | — |
+| Fallback run | **Canonical definition:** the ordered list of numbers dialled for one outbound CSP call, and the act of moving down it when a number does not answer. Created per call, reading the store at the moment that call is placed and dialling what it returned, without reading again during the run (R6, precedence 3). An active ticket may have many runs over its life, and each resolves its own list afresh. Carries: its own identifier, the ticket and customer, the numbers it read and in what order, the position that answered if any, and the end state. | — |
 | Does not answer | **Canonical definition:** the outcome for one dial when Exotel reports the number as unanswered, busy, or unreachable. The ring duration that produces it is Exotel applet configuration (see Overrides), not set by this spec. Every rule and acceptance criterion that turns on a number "not answering" means exactly this. | Telephony |
 | Resolution path | **Canonical definition:** how IVR 2.0 works out which customer and ticket a call is about, before this spec does anything. There are exactly three: **(1)** the caller enters a PIN; **(2)** the call comes from the app, which carries its own cached mapping; **(3)** the call comes from the caller's dialer with no PIN, and the caller has exactly one active ticket. All three are IVR 2.0's and unchanged by this spec, which only enriches the destination each produces (R5, G4). | Telephony |
-| Position | A number's place in a frozen dial list. Position 1 is always the registered number; the alternate follows it. | — |
+| Position | A number's place in the order a run dials. Position 1 is always the registered number; the alternate follows it. | — |
 | Exhausted · Abandoned | A run's end state. **Exhausted**: every position was dialled and none answered. **Abandoned**: the CSP disconnected before any position answered. Both count as not connected. | — |
 | Ticket-level connect rate | **Canonical definition:** of tickets that had at least one call in the chosen direction and window, the share where at least one of those calls was answered by a person. A ticket counts once however many calls it had. Any answered call counts, however short. Not to be confused with call-level connect rate, which is per call; comparisons must never mix the two grains. | — |
 | Service · Pickup ticket | The two families in scope. **Service** is the restore family — a live customer whose connection needs restoring, called "Service" in the ops dashboard. **Pickup** is netbox recovery, collecting equipment from a customer. Install is out of scope. | — |

@@ -1,6 +1,6 @@
 # IVR Alternate Number Routing — Tradeoffs Register
 
-Companion to `IVR_Alternate_Number_PRD.md` v2.4. **Not part of the PRD.** This is the PM's own record of every decision put as a tradeoff during the interview, what was rejected, and why.
+Companion to `IVR_Alternate_Number_PRD.md` v2.5. **Not part of the PRD.** This is the PM's own record of every decision put as a tradeoff during the interview, what was rejected, and why.
 
 Owner: Ashish Raj · Signed off 4 Aug 2026
 
@@ -82,3 +82,9 @@ v2.1 already froze the list "when the run begins", which meant the same thing, b
 Row #12 above recorded the PIN requirement as "entry-path parity" across two paths. That was incomplete rather than wrong: the parity obligation stands, but it covers three paths. `AC-PIN-*` is renamed `AC-RES-*`, since the group was never really about PINs, and the three paths now have a canonical definition in §8 so no section restates them.
 
 **This PRD is an increment on IVR 2.0, not a change to it.** All three paths, caller identification, PIN handling, what happens when a dialer caller has more than one active ticket, and dead-end handling stay IVR 2.0's. R5 must-not(b) forbids this spec changing any of them.
+
+## v2.5 — "frozen dial list" removed from the acceptance criteria
+
+The phrase was doing one real job: making AC-RACE-3 true, that a change in the store mid-call does not disturb the call in progress. It was then used in sixteen places, most of them acceptance criteria about which numbers get dialled — where it described internal state instead of observable behaviour. A tester can watch which numbers were dialled and in what order; they cannot watch a list being frozen.
+
+The obligation is kept and stated as behaviour: **"the list is read once, at the start of the run"** (§3a precedence 3, T1, and the Fallback run definition). The ACs now assert the dials themselves — for example AC-DIAL-1 became *"09811100022 is dialled first and, if it does not answer, 09811100044 second — and no other number is dialled."*
