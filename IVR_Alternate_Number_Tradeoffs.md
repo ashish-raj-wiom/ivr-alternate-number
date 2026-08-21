@@ -1,6 +1,6 @@
 # IVR Alternate Number Routing — Tradeoffs Register
 
-Companion to `IVR_Alternate_Number_PRD.md` v2.0. **Not part of the PRD.** This is the PM's own record of every decision put as a tradeoff during the interview, what was rejected, and why.
+Companion to `IVR_Alternate_Number_PRD.md` v2.1. **Not part of the PRD.** This is the PM's own record of every decision put as a tradeoff during the interview, what was rejected, and why.
 
 Owner: Ashish Raj · Signed off 4 Aug 2026
 
@@ -57,3 +57,10 @@ The rows above record decisions as they were taken. Several were later reversed 
 - **Regression ACs no longer say "as it does today".** Six ACs compared against an undocumented baseline; each now asserts the observable it was standing in for — for example "exactly one dial is placed, to the registered number".
 - **Race ACs no longer say "at the same instant".** No tester can produce a simultaneous event; each is now framed as a testable state, such as "before the dial to position 2 is placed".
 - **Bundled ACs were split.** One assertion each, so a failure names itself.
+
+## Further reduction, 5 Aug 2026 — v2.1
+
+| Original row | What changed | Why |
+|---|---|---|
+| #7, #8 — alternates go stale after C-02; expiry is the removal mechanism | **C-02 removed entirely.** No age test, no G5 guardrail, no expiry ACs | Whether a number is still fit to dial is the store's judgement, not this spec's. AC-REG-6 now asserts the opposite of the old behaviour: an alternate last used two years ago **is** dialled, because this spec applies no age test |
+| Dedupe against the registered number (R3/G3 in v2.0) | **Removed entirely.** No dedupe rule, no guardrail, no AC | The store's own spec refuses a number equal to the registered number — its R2b, tested by its AC-HUB-4, and its glossary defines an alternate as "a phone number, other than their registered number". Testing it here duplicated a guarantee the store already gives |
