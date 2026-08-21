@@ -3,7 +3,7 @@
 | | | | |
 |---|---|---|---|
 | **Owner** — Ashish Raj (PM) | **Reviewer** — Rahul (Eng Lead) | **Status** — Signed off | **Sign-off** — Signed off · 5 Aug 2026 |
-| **Version** — v2.5 · 5 Aug 2026 | | | |
+| **Version** — v2.6 · 5 Aug 2026 | | | |
 
 ---
 
@@ -113,7 +113,7 @@ Lifecycle of a **fallback run**, created when a CSP-initiated call resolves to a
 | T2 | Ringing position N | The ringing number answers | — | Connected | Call bridged (R1b). Which position answered, and whether it was the registered number or the alternate, recorded (MQ-2, MQ-9). Terminal. |
 | T3 | Ringing position N | The ringing number does not answer (§8) | A further position remains in the list this run read | Ringing position N+1 | Next number dialled (R3), and not before the current dial has finished. No CSP action, no announcement, no reconnection (R1, G1). |
 | T4 | Ringing position N | The ringing number does not answer (§8) | No further position remains | Exhausted | Existing unconnected-call handling applies. Ticket counted as not connected (M1, M2, MQ-5). Terminal. |
-| T5 | Ringing position N | The CSP disconnects | — | Abandoned | Run ends; no further number is dialled. Ticket counted as not connected (M1, M2, MQ-5). Terminal. |
+| T5 | Ringing position N | The CSP disconnects | — | Abandoned | Run ends; no further number is dialled. The number that was ringing is recorded as ended by the CSP while ringing, not as unanswered (MQ-9). Ticket counted as not connected (M1, M2, MQ-5). Terminal. |
 | T6 | — | CSP-initiated call resolved to a customer and an in-scope ticket | The store returns no alternate for that customer | Ringing position 1 | One dial only, to the registered number. No answer routes to T4, not T3. **The common case wherever coverage is low** (MQ-8). |
 | T7 | — | CSP-initiated call resolved to a customer and an in-scope ticket | The store cannot be read in time to be used | Ringing position 1 | **Failure envelope:** a call is never failed for want of a list — it degrades to the registered number alone. No answer routes to T4. No alternate is guessed, or reused from an earlier run. |
 
@@ -142,15 +142,15 @@ The one screen that touches alternate numbers is the internal portal that manage
 
 | ID | The system must be able to answer… | Feeds |
 |---|---|---|
-| MQ-1 | Of in-scope tickets with at least one CSP-initiated call, what share had at least one call where a person answered — split by ticket family. Abandoned runs count as not connected. | M1 · M2 |
+| MQ-1 | Of in-scope tickets with at least one CSP-initiated call, what share had at least one call where a person answered — split by ticket family. Computed from MQ-9's rows, so the two always reconcile. Abandoned runs count as not connected. | M1 · M2 |
 | MQ-2 | For each run, which position answered — registered, alternate, or none. | G1 · M1 · M2 |
 | MQ-3 | For each position, the share of dials to that position that were answered. | G2 · how much of any gain came from the alternate |
 | MQ-4 | How many numbers each run dialled, and how many the store returned that C-01 excluded. | R3 · C-01 |
-| MQ-5 | How many runs ended Connected, Exhausted or Abandoned. | M1, M2 definition · T4 · T5 |
+| MQ-5 | How many runs ended Connected, Exhausted or Abandoned — and that each run's end state agrees with its own rows in MQ-9. | M1, M2 definition · T4 · T5 |
 | MQ-6 | Whether any number dialled in a run was not held by the store against that ticket's customer. | G3 invariant (R4) |
 | MQ-7 | Whether any run dialled something other than the registered number first. | G2 invariant (R2) |
 | MQ-8 | How many customers in the in-scope base hold an alternate number, and how that is moving. | M1 · M2 — the covered share is what explains a rate that does or does not move |
-| MQ-9 | For one call, the outcome of **every** number dialled — one row each: which number, at which position, whether it was the registered number or the alternate, and whether it answered, did not answer, was busy or could not be reached. Every row tied to that call by a single identifier, and to the ticket and customer. A number never reached because the run ended first has no row. | G2 · G3 · underpins MQ-2 · MQ-3 · MQ-4 |
+| MQ-9 | For one call, the outcome of **every** number dialled — one row each: which number, at which position, whether it was the registered number or the alternate, and which **one** of these it ended as: **answered**, **not answered**, **busy**, **could not be reached**, or **ended by the CSP while ringing**. Every row tied to that call by a single identifier, and to the ticket and customer. A number the run never dialled has no row. **This is the source record every other measure here is computed from.** | G2 · G3 · the source of MQ-1 · MQ-2 · MQ-3 · MQ-4 · MQ-5 |
 | MQ-10 | For each call, which of the three resolution paths named the customer — entered PIN, app cache, or dialer with a single active ticket. | G4 · R5 |
 
 ---
@@ -212,6 +212,9 @@ The one screen that touches alternate numbers is the internal portal that manage
 | AC-WF-4 | **Given** each row of the run in AC-WF-1, **When** it is read, **Then** it states whether that number was Meena's registered number or her alternate. | MQ-9 · MQ-2 · MQ-3 | Settled |
 | AC-WF-5 | **Given** Ravi called Meena at 15:20 and again at 15:45, **When** both runs are examined, **Then** each has its own call identifier and every row belongs to exactly one of them. | MQ-9 · T1 | Settled |
 | AC-WF-6 | **Given** the single-position run in AC-DIAL-2, **When** its record is examined, **Then** it holds exactly one row — a run with no fallback is recorded the same way as one with it. | MQ-9 · T6 | Settled |
+| AC-WF-7 | **Given** a run where 09811100022 returned busy and 09811100044 then rang out unanswered, **When** the record is examined, **Then** position 1's outcome reads busy and position 2's reads not answered — the two are distinguishable, not both recorded as unanswered. | MQ-9 · T3 | Settled |
+| AC-WF-8 | **Given** 09811100022 is ringing at position 1, **When** Ravi disconnects before it answers, **Then** the record holds one row for 09811100022 with the outcome ended by the CSP while ringing, and no row for 09811100044. | MQ-9 · T5 | Settled |
+| AC-WF-9 | **Given** a week of runs across the cohort, **When** MQ-1's ticket-level connect rate is recomputed from MQ-9's rows alone, **Then** it equals the reported figure, and every run's end state in MQ-5 agrees with that run's own rows. | MQ-9 · MQ-1 · MQ-5 · M1 · M2 | Settled |
 
 ### FAIL — When the store cannot be read (T7)
 
@@ -276,7 +279,7 @@ The one screen that touches alternate numbers is the internal portal that manage
 |---|---|---|
 | Alternate number | An additional phone number the store holds against a customer, existing so a call can be connected to them when their registered number does not answer. Defined in full — including how it gets there, who may change it, and whether it is still fit to use — by the **Customer Alternate Number Store PRD**. This spec only reads it, and dials what it returns. | Customer |
 | Registered number | The customer's primary number on their Wiom account. Always position 1, never reordered or replaced by this spec (G2, R2). | Customer |
-| Fallback run | **Canonical definition:** the ordered list of numbers dialled for one outbound CSP call, and the act of moving down it when a number does not answer. Created per call, reading the store at the moment that call is placed and dialling what it returned, without reading again during the run (R6, precedence 3). An active ticket may have many runs over its life, and each resolves its own list afresh. Carries: its own identifier, the ticket and customer, the numbers it read and in what order, the position that answered if any, and the end state. | — |
+| Fallback run | **Canonical definition:** the ordered list of numbers dialled for one outbound CSP call, and the act of moving down it when a number does not answer. Created per call, reading the store at the moment that call is placed and dialling what it returned, without reading again during the run (R6, precedence 3). An active ticket may have many runs over its life, and each resolves its own list afresh. Carries: its own identifier, the ticket and customer, the numbers it read and in what order, one outcome per number it dialled, the position that answered if any, and the end state. | — |
 | Does not answer | **Canonical definition:** the outcome for one dial when Exotel reports the number as unanswered, busy, or unreachable. The ring duration that produces it is Exotel applet configuration (see Overrides), not set by this spec. Every rule and acceptance criterion that turns on a number "not answering" means exactly this. | Telephony |
 | Resolution path | **Canonical definition:** how IVR 2.0 works out which customer and ticket a call is about, before this spec does anything. There are exactly three: **(1)** the caller enters a PIN; **(2)** the call comes from the app, which carries its own cached mapping; **(3)** the call comes from the caller's dialer with no PIN, and the caller has exactly one active ticket. All three are IVR 2.0's and unchanged by this spec, which only enriches the destination each produces (R5, G4). | Telephony |
 | Position | A number's place in the order a run dials. Position 1 is always the registered number; the alternate follows it. | — |
@@ -299,7 +302,7 @@ Whether these are one system or several is the implementer's design.
 | End a run the moment the CSP disconnects, dialling nothing further; bridge to exactly one number even when an answer and an advance coincide. | T5 · T2 · precedence 1 · precedence 2 |
 | Fall back to the registered number alone when the store cannot be read in time, without failing the call and without reusing a list from an earlier run. | T7 |
 | Build the same list whichever IVR entry path resolved the destination, and record which path it was. | R5 · G4 · MQ-10 |
-| Give each run an identifier and record one row per number dialled — the number, its position, whether it was the registered number or the alternate, and its outcome — tied to the customer and ticket. | MQ-9 |
+| Give each run an identifier and record one row per number dialled — the number, its position, whether it was the registered number or the alternate, and exactly one outcome from answered, not answered, busy, could not be reached, or ended by the CSP while ringing — tied to the customer and ticket, and complete enough that every measure in §6 can be recomputed from it. | MQ-9 · MQ-1 · MQ-5 |
 | Report connect rate by ticket family, per-position answer rates, run end states, and the covered share of the base. | MQ-1 · MQ-2 · MQ-3 · MQ-5 · MQ-8 |
 | Turn the fallback off, and change C-01, without a release. | C-01 · C-02 |
 
