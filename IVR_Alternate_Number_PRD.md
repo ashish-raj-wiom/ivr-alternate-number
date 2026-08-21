@@ -3,7 +3,7 @@
 | | | | |
 |---|---|---|---|
 | **Owner** — Ashish Raj (PM) | **Reviewer** — Rahul (Eng Lead) | **Status** — Signed off | **Sign-off** — Signed off · 5 Aug 2026 |
-| **Version** — v2.3 · 5 Aug 2026 | | | |
+| **Version** — v2.4 · 5 Aug 2026 | | | |
 
 ---
 
@@ -19,7 +19,11 @@
 - **Install tickets are out of scope.** Install is the source of this spec's benchmark, not a family it applies to (AC-REG-2).
 - **Customer-initiated calls** are the escalation-chain PRD's, not this one's (AC-REG-1).
 - **The registered number** is never changed, replaced or reordered. It is always dialled first (G2).
-- **How the IVR decides whom to dial** — the app cache, the PIN, caller identification and dead-end handling — is governed by the existing IVR product spec. This spec begins only once that resolution has named a customer, and enriches only what it produced (R5, AC-PIN-2).
+- **How the IVR decides whom to dial is IVR 2.0's, unchanged.** This spec is an increment on top of it. IVR 2.0 resolves a call to a customer and ticket in **three** ways (§8), and this spec begins only once one of them has done so, enriching only what it produced (R5, AC-RES-4):
+  1. the caller enters a PIN;
+  2. the call comes from the app, which carries its own cached mapping;
+  3. the call comes from the caller's dialer with no PIN, and the caller has exactly one active ticket, so the ticket is unambiguous.
+  Caller identification, PIN handling, what happens when a dialer caller has more than one active ticket, and dead-end handling all remain IVR 2.0's (AC-RES-4).
 - **Ring durations** are Exotel applet configuration, not parameters of this spec (see Overrides). "Does not answer" is defined in §8.
 - **What the CSP is told** — nothing about which number answered, or that an alternate exists (AC-REG-3).
 
@@ -30,7 +34,7 @@
 | G1 | **Invisible fallback** | The call moves to the next number on its own; the CSP never presses a key, hears an announcement, or has the call dropped and re-established. | R1 · AC-GRD-1 · MQ-2 |
 | G2 | **The registered number is always first** | Every run starts at the customer's registered number, so an alternate never displaces it. | R2 · AC-GRD-2 · MQ-7 |
 | G3 | **Only this customer's numbers** | A run only ever dials numbers the store holds against the customer who owns the ticket — never another customer's, never the CSP's own. | R4 · AC-GRD-3 · MQ-6 |
-| G4 | **The same list either way** | The dial list is the same whether the IVR resolved the call from the app cache or from an entered PIN. | R5 · AC-GRD-4 · MQ-10 |
+| G4 | **The same list however resolved** | The dial list is the same whichever of IVR 2.0's three resolution paths named the customer. | R5 · AC-GRD-4 · MQ-10 |
 
 ### Success metrics
 
@@ -61,7 +65,7 @@ Ticket-level connect rate is defined in §8. A ticket where the CSP disconnected
 | R2 | As a customer, I want my main number tried first — it is the one I gave you. | Dial the registered number as position 1 of every run (G2). | Skip, reorder or replace the registered number, ever. |
 | R3 | As a CSP, I want a bounded number of attempts, not an open-ended sequence. | Dial at most C-01 numbers in one run, the registered number included, taking the alternates in the order the store returned them. | Dial beyond C-01, or place two dials of one run at the same time. |
 | R4 | As a customer, I want only my own numbers dialled about my job, and I do not want a call changing my records. | **(a)** Restrict every dial to numbers the store holds against the customer who owns the ticket (G3). **(b)** Read the store only. | **(a)** Dial another customer's number, the CSP's own number, or any number the store does not hold for this customer. **(b)** Add, change or remove anything in the store as a result of placing a call. **(c)** Judge a number the store returned as unfit to dial — age, validity and ordering are the store's. |
-| R5 | As a CSP who reached the customer by dialling back and entering a PIN, I want the same fallback I get from the app. | Build the same dial list however the IVR resolved the destination — from the app's cached mapping or from an entered PIN (G4). | **(a)** Apply the fallback on one entry path and not the other. **(b)** Change how the app cache or the PIN resolves a destination, or what a PIN means. |
+| R5 | As a CSP, I want the same fallback whether I called from the app, dialled back and entered a PIN, or dialled back with a single ticket open and entered nothing. | Build the same dial list whichever of the three resolution paths (§8) named the customer and ticket (G4). | **(a)** Apply the fallback on some resolution paths and not others. **(b)** Change how any of the three paths resolves a call — the app cache, PIN handling, or single-active-ticket matching — or what a PIN means. |
 | R6 | As a customer who gave my other number after raising the ticket, I want it used on the next call about it rather than ignored for arriving late. | Ask the store for the customer's numbers **at the moment each call is placed**, and dial what it returns then — on every call for the same active ticket, however many there are. | **(a)** Resolve, cache or carry a dial list from ticket creation, or from any time before the call. **(b)** Leave out an alternate because it was added after the ticket was created, or because an earlier call for the same active ticket did not have it. |
 
 ---
@@ -147,7 +151,7 @@ The one screen that touches alternate numbers is the internal portal that manage
 | MQ-7 | Whether any run dialled something other than the registered number first. | G2 invariant (R2) |
 | MQ-8 | How many customers in the in-scope base hold an alternate number, and how that is moving. | M1 · M2 — the covered share is what explains a rate that does or does not move |
 | MQ-9 | For one call, the outcome of **every** number dialled — one row each: which number, at which position, whether it was the registered number or the alternate, and whether it answered, did not answer, was busy or could not be reached. Every row tied to that call by a single identifier, and to the ticket and customer. A number never reached because the run ended first has no row. | G2 · G3 · underpins MQ-2 · MQ-3 · MQ-4 |
-| MQ-10 | For each call, which IVR entry path resolved the destination — app cache or entered PIN. | G4 · R5 |
+| MQ-10 | For each call, which of the three resolution paths named the customer — entered PIN, app cache, or dialer with a single active ticket. | G4 · R5 |
 
 ---
 
@@ -189,13 +193,14 @@ The one screen that touches alternate numbers is the internal portal that manage
 | AC-END-3 | **Given** 09811100022 is ringing at position 1, **When** Ravi disconnects before any dial to position 2 is placed, **Then** the run's end state is Abandoned and no dial was placed to 09811100044. | T5 | Settled |
 | AC-END-4 | **Given** the run in AC-END-3, **When** the ticket is counted for MQ-1, **Then** `TKT-88231` counts as not connected. | T5 · M1 · MQ-5 | Settled |
 
-### PIN — Both IVR entry paths (R5)
+### RES — All three resolution paths (R5)
 
 | AC | Given / When / Then | Verifies | Status |
 |---|---|---|---|
-| AC-PIN-1 | **Given** the store returns 09811100044 for Meena, **When** Ravi dials the masked number from his call log and enters the PIN for `TKT-88231`, **Then** the frozen dial list is 09811100022 at position 1 and 09811100044 at position 2 — the same list as AC-DIAL-1. | R5 · G4 · T1 | Settled |
-| AC-PIN-2 | **Given** Ravi's PIN-entered call, **When** the IVR resolves the destination, **Then** the customer whose numbers are used is the customer on the ticket the PIN resolved to. | R5 must-not(b) · §1 Boundary | Settled |
-| AC-PIN-3 | **Given** Ravi's PIN-entered call, **When** 09811100022 does not answer, **Then** 09811100044 is dialled — the fallback is not limited to app-originated calls. | R5 must-not(a) · T3 · G4 | Settled |
+| AC-RES-1 | **Given** the store returns 09811100044 for Meena, **When** Ravi dials the masked number and enters the PIN for `TKT-88231`, **Then** the frozen dial list is 09811100022 at position 1 and 09811100044 at position 2 — the same list as AC-DIAL-1, where he called from the app. | R5 · G4 · T1 | Settled |
+| AC-RES-2 | **Given** the store returns 09811100044 for Meena and `TKT-88231` is Ravi's only active ticket, **When** he dials the masked number from his phone's dialer and enters no PIN, **Then** the frozen dial list is 09811100022 at position 1 and 09811100044 at position 2 — the same list again. | R5 · G4 · T1 | Settled |
+| AC-RES-3 | **Given** Ravi's no-PIN dialer call from AC-RES-2, **When** 09811100022 does not answer, **Then** 09811100044 is dialled — the fallback is not limited to app-originated or PIN-entered calls. | R5 must-not(a) · T3 · G4 | Settled |
+| AC-RES-4 | **Given** a call resolved by any of the three paths, **When** the IVR names the customer and ticket, **Then** the customer whose numbers are dialled is the customer on that ticket, and nothing about how the path reached that answer differs from IVR 2.0 today. | R5 must-not(b) · §1 Boundary | Settled |
 
 ### WF — Workflows and per-dial tracking (MQ-9)
 
@@ -261,7 +266,7 @@ The one screen that touches alternate numbers is the internal portal that manage
 | AC-GRD-1 | **Given** every run in a week that reached position 2, **When** each call's record is examined, **Then** none played an announcement to the CSP, none requested a keypress, and none shows the call disconnected and re-established. | G1 · R1 | Settled |
 | AC-GRD-2 | **Given** every run in a week, **When** the first dial of each is checked, **Then** every one was placed to that customer's registered number. | G2 · R2 · MQ-7 | Settled |
 | AC-GRD-3 | **Given** every run in a week, **When** every number dialled is checked against what the store holds for that run's customer, **Then** all of them are held for that customer, and none is another customer's or the CSP's own. | G3 · R4a · MQ-6 | Settled |
-| AC-GRD-4 | **Given** the same customer and ticket, **When** one call is placed from the app and another by dialling back and entering the PIN, **Then** both frozen dial lists hold the same numbers in the same positions. | G4 · R5 · MQ-10 | Settled |
+| AC-GRD-4 | **Given** the same customer and their single active ticket, **When** three calls are placed — one from the app, one by dialling back and entering the PIN, and one from the dialer with no PIN — **Then** all three frozen dial lists hold the same numbers in the same positions. | G4 · R5 · MQ-10 | Settled |
 
 ---
 
@@ -273,6 +278,7 @@ The one screen that touches alternate numbers is the internal portal that manage
 | Registered number | The customer's primary number on their Wiom account. Always position 1, never reordered or replaced by this spec (G2, R2). | Customer |
 | Fallback run | **Canonical definition:** the ordered list of numbers dialled for one outbound CSP call, and the act of moving down it when a number does not answer. Created per call, with its list resolved from the store at the moment that call is placed and frozen for the rest of that run (R6). An active ticket may have many runs over its life, and each resolves its own list afresh. Carries: its own identifier, the ticket and customer, the frozen list, the position that answered if any, and the end state. | — |
 | Does not answer | **Canonical definition:** the outcome for one dial when Exotel reports the number as unanswered, busy, or unreachable. The ring duration that produces it is Exotel applet configuration (see Overrides), not set by this spec. Every rule and acceptance criterion that turns on a number "not answering" means exactly this. | Telephony |
+| Resolution path | **Canonical definition:** how IVR 2.0 works out which customer and ticket a call is about, before this spec does anything. There are exactly three: **(1)** the caller enters a PIN; **(2)** the call comes from the app, which carries its own cached mapping; **(3)** the call comes from the caller's dialer with no PIN, and the caller has exactly one active ticket. All three are IVR 2.0's and unchanged by this spec, which only enriches the destination each produces (R5, G4). | Telephony |
 | Position | A number's place in a frozen dial list. Position 1 is always the registered number; the alternate follows it. | — |
 | Exhausted · Abandoned | A run's end state. **Exhausted**: every position was dialled and none answered. **Abandoned**: the CSP disconnected before any position answered. Both count as not connected. | — |
 | Ticket-level connect rate | **Canonical definition:** of tickets that had at least one call in the chosen direction and window, the share where at least one of those calls was answered by a person. A ticket counts once however many calls it had. Any answered call counts, however short. Not to be confused with call-level connect rate, which is per call; comparisons must never mix the two grains. | — |
