@@ -1,6 +1,6 @@
 # IVR Alternate Number Routing — Tradeoffs Register
 
-Companion to `IVR_Alternate_Number_PRD.md` v2.2. **Not part of the PRD.** This is the PM's own record of every decision put as a tradeoff during the interview, what was rejected, and why.
+Companion to `IVR_Alternate_Number_PRD.md` v2.3. **Not part of the PRD.** This is the PM's own record of every decision put as a tradeoff during the interview, what was rejected, and why.
 
 Owner: Ashish Raj · Signed off 4 Aug 2026
 
@@ -71,4 +71,4 @@ The rows above record decisions as they were taken. Several were later reversed 
 |---|---|---|---|---|
 | When is the dial list built? | **At the moment the call is placed**, from what the store holds then | Resolve at ticket creation; cache a list per ticket; carry a list from an earlier call on the same ticket | An alternate added after the ticket was raised must be used on the next call. Resolving at ticket creation would silently ignore every number captured after a ticket opened — which is most of them | 5 Aug 2026 |
 
-v2.1 already froze the list "when the run begins", which meant the same thing, but only implicitly — and implicit is how a developer ends up resolving it at ticket creation. R6 now states it as an obligation with two must-nots, T1 says it in canon, and two ACs test it: AC-DIAL-5 (a number added after the ticket is dialled) and AC-DIAL-6 (two calls on one ticket each take the latest stored number).
+v2.1 already froze the list "when the run begins", which meant the same thing, but only implicitly — and implicit is how a developer ends up resolving it at ticket creation. R6 now states it as an obligation with two must-nots, T1 says it in canon, and two ACs test it: AC-DIAL-5 (a number added after the ticket is dialled) and AC-DIAL-6 (two calls on the same active ticket each take the latest stored number). Qualified to the **same active ticket** in v2.3, so the obligation is bounded to a ticket's open life rather than reading as an open-ended promise across a customer's history.

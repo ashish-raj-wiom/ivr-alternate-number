@@ -3,7 +3,7 @@
 | | | | |
 |---|---|---|---|
 | **Owner** — Ashish Raj (PM) | **Reviewer** — Rahul (Eng Lead) | **Status** — Signed off | **Sign-off** — Signed off · 5 Aug 2026 |
-| **Version** — v2.2 · 5 Aug 2026 | | | |
+| **Version** — v2.3 · 5 Aug 2026 | | | |
 
 ---
 
@@ -14,7 +14,7 @@
 **Boundary.** This spec governs **CSP-initiated** IVR calls on **Service (restore) and Pickup** tickets, at every CSP where IVR 2.0 is live. It governs one thing: **which numbers the IVR dials, and in what order, once a call has been resolved to a customer.**
 
 - **Holding the numbers is not this spec's.** The alternate number store, how a number gets into it, and the portal that manages it are specified and deployed elsewhere — the Customer Alternate Number Store PRD. This spec **reads** that store and never writes to it (R4, AC-REG-5).
-- **The list is built when the call is placed, never earlier.** What the store held when the ticket was created is irrelevant; what it holds at the moment of the call is what gets dialled (R6, AC-DIAL-5).
+- **The list is built when the call is placed, never earlier.** What the store held when the ticket was created is irrelevant; what it holds at the moment of the call is what gets dialled. This holds for every call on the same active ticket, so a number added between two calls is used on the second (R6, AC-DIAL-5, AC-DIAL-6).
 - **Whether a number is fit to dial is the store's judgement.** This spec dials what the store returns for a customer. It applies no age test, no validity test and no ordering of its own beyond putting the registered number first (R1, AC-REG-6).
 - **Install tickets are out of scope.** Install is the source of this spec's benchmark, not a family it applies to (AC-REG-2).
 - **Customer-initiated calls** are the escalation-chain PRD's, not this one's (AC-REG-1).
@@ -62,7 +62,7 @@ Ticket-level connect rate is defined in §8. A ticket where the CSP disconnected
 | R3 | As a CSP, I want a bounded number of attempts, not an open-ended sequence. | Dial at most C-01 numbers in one run, the registered number included, taking the alternates in the order the store returned them. | Dial beyond C-01, or place two dials of one run at the same time. |
 | R4 | As a customer, I want only my own numbers dialled about my job, and I do not want a call changing my records. | **(a)** Restrict every dial to numbers the store holds against the customer who owns the ticket (G3). **(b)** Read the store only. | **(a)** Dial another customer's number, the CSP's own number, or any number the store does not hold for this customer. **(b)** Add, change or remove anything in the store as a result of placing a call. **(c)** Judge a number the store returned as unfit to dial — age, validity and ordering are the store's. |
 | R5 | As a CSP who reached the customer by dialling back and entering a PIN, I want the same fallback I get from the app. | Build the same dial list however the IVR resolved the destination — from the app's cached mapping or from an entered PIN (G4). | **(a)** Apply the fallback on one entry path and not the other. **(b)** Change how the app cache or the PIN resolves a destination, or what a PIN means. |
-| R6 | As a customer who gave my other number after raising the ticket, I want it used on the next call rather than ignored for arriving late. | Ask the store for the customer's numbers **at the moment the call is placed**, and dial what it returns then. | **(a)** Resolve, cache or carry a dial list from ticket creation, or from any time before the call. **(b)** Leave out an alternate because it was added after the ticket was created, or because an earlier call for the same ticket did not have it. |
+| R6 | As a customer who gave my other number after raising the ticket, I want it used on the next call about it rather than ignored for arriving late. | Ask the store for the customer's numbers **at the moment each call is placed**, and dial what it returns then — on every call for the same active ticket, however many there are. | **(a)** Resolve, cache or carry a dial list from ticket creation, or from any time before the call. **(b)** Leave out an alternate because it was added after the ticket was created, or because an earlier call for the same active ticket did not have it. |
 
 ---
 
@@ -105,7 +105,7 @@ Lifecycle of a **fallback run**, created when a CSP-initiated call resolves to a
 
 | ID | From | Action / Trigger | Rule / Check | To | Side-effects |
 |---|---|---|---|---|---|
-| T1 | — | CSP-initiated call resolved to a customer and an in-scope ticket | Fallback enabled (C-02); the store returns at least one alternate for that customer | Ringing position 1 | Registered number dialled first (R2, G2). The dial list is resolved and frozen **at this moment — when the call is placed, not when the ticket was created** (R6): registered number, then the alternates the store returned now, in its order, capped at C-01 (R3). List length recorded (MQ-4). |
+| T1 | — | CSP-initiated call resolved to a customer and an in-scope ticket | Fallback enabled (C-02); the store returns at least one alternate for that customer | Ringing position 1 | Registered number dialled first (R2, G2). The dial list is resolved and frozen **at this moment — when this call is placed, not when the ticket was created and not when an earlier call on the same active ticket was placed** (R6): registered number, then the alternates the store returned now, in its order, capped at C-01 (R3). List length recorded (MQ-4). |
 | T2 | Ringing position N | The ringing number answers | — | Connected | Call bridged (R1b). Which position answered, and whether it was the registered number or the alternate, recorded (MQ-2, MQ-9). Terminal. |
 | T3 | Ringing position N | The ringing number does not answer (§8) | A further position remains in the frozen list | Ringing position N+1 | Next number dialled (R3), and not before the current dial has finished. No CSP action, no announcement, no reconnection (R1, G1). |
 | T4 | Ringing position N | The ringing number does not answer (§8) | No further position remains | Exhausted | Existing unconnected-call handling applies. Ticket counted as not connected (M1, M2, MQ-5). Terminal. |
@@ -165,8 +165,8 @@ The one screen that touches alternate numbers is the internal portal that manage
 | AC-DIAL-2 | **Given** the store returns no alternate for Meena, **When** Ravi calls her, **Then** the frozen dial list is exactly 09811100022 at position 1, and no position 2 exists. | T6 · G2 | Settled |
 | AC-DIAL-3 | **Given** the store returns an error, or does not answer in time to be used, when asked for Meena's numbers, **When** Ravi's call is bridged, **Then** the frozen dial list is exactly 09811100022, and the call is bridged rather than failed. | T7 | Settled |
 | AC-DIAL-4 | **Given** a Pickup ticket for Meena and 09811100044 returned for her, **When** a CSP calls her on that ticket, **Then** a two-position dial list is built — Pickup is in scope. | T1 · M2 · §1 Boundary | Settled |
-| AC-DIAL-5 | **Given** `TKT-88231` was created on 10 Aug 2026 when the store held no alternate for Meena, and 09811100044 was added on 11 Aug, **When** Ravi calls her on 12 Aug, **Then** the frozen dial list is 09811100022 at position 1 and 09811100044 at position 2 — the number is used even though it arrived after the ticket. | R6 · T1 | Settled |
-| AC-DIAL-6 | **Given** Ravi called Meena on 12 Aug when the store held 09811100044, **When** the stored alternate is changed to 09811100066 and Ravi calls again on 13 Aug, **Then** the second run's position 2 is 09811100066 and 09811100044 is not dialled — each call takes the latest stored number. | R6 · T1 · R6 must-not(a) | Settled |
+| AC-DIAL-5 | **Given** `TKT-88231` was created on 10 Aug 2026 when the store held no alternate for Meena, 09811100044 was added on 11 Aug, and the ticket is still active, **When** Ravi calls her on 12 Aug, **Then** the frozen dial list is 09811100022 at position 1 and 09811100044 at position 2 — the number is used even though it arrived after the ticket. | R6 · T1 | Settled |
+| AC-DIAL-6 | **Given** Ravi called Meena on 12 Aug about `TKT-88231` when the store held 09811100044, **When** the stored alternate is changed to 09811100066 and Ravi calls again on 13 Aug about the same still-active ticket, **Then** the second run's position 2 is 09811100066 and 09811100044 is not dialled — every call on an active ticket takes the latest stored number. | R6 · R6 must-not(b) · T1 | Settled |
 
 ### FB — Falling back and connecting (T2, T3)
 
@@ -271,7 +271,7 @@ The one screen that touches alternate numbers is the internal portal that manage
 |---|---|---|
 | Alternate number | An additional phone number the store holds against a customer, existing so a call can be connected to them when their registered number does not answer. Defined in full — including how it gets there, who may change it, and whether it is still fit to use — by the **Customer Alternate Number Store PRD**. This spec only reads it, and dials what it returns. | Customer |
 | Registered number | The customer's primary number on their Wiom account. Always position 1, never reordered or replaced by this spec (G2, R2). | Customer |
-| Fallback run | **Canonical definition:** the ordered list of numbers dialled for one outbound CSP call, and the act of moving down it when a number does not answer. Created per call, with its list resolved from the store at the moment the call is placed and frozen for the rest of that run (R6). Carries: its own identifier, the ticket and customer, the frozen list, the position that answered if any, and the end state. | — |
+| Fallback run | **Canonical definition:** the ordered list of numbers dialled for one outbound CSP call, and the act of moving down it when a number does not answer. Created per call, with its list resolved from the store at the moment that call is placed and frozen for the rest of that run (R6). An active ticket may have many runs over its life, and each resolves its own list afresh. Carries: its own identifier, the ticket and customer, the frozen list, the position that answered if any, and the end state. | — |
 | Does not answer | **Canonical definition:** the outcome for one dial when Exotel reports the number as unanswered, busy, or unreachable. The ring duration that produces it is Exotel applet configuration (see Overrides), not set by this spec. Every rule and acceptance criterion that turns on a number "not answering" means exactly this. | Telephony |
 | Position | A number's place in a frozen dial list. Position 1 is always the registered number; the alternate follows it. | — |
 | Exhausted · Abandoned | A run's end state. **Exhausted**: every position was dialled and none answered. **Abandoned**: the CSP disconnected before any position answered. Both count as not connected. | — |
@@ -287,7 +287,7 @@ Whether these are one system or several is the implementer's design.
 | Capability | Needed by |
 |---|---|
 | Read a customer's alternate numbers from the store — and never write to it. | R4 · T1 · AC-REG-5 |
-| Ask the store for a customer's numbers at the moment a call is placed — never earlier, and never from a list carried over from ticket creation or an earlier call. | R6 · T1 · AC-DIAL-5 |
+| Ask the store for a customer's numbers at the moment each call is placed — never earlier, and never from a list carried over from ticket creation or from an earlier call on the same active ticket. | R6 · T1 · AC-DIAL-5 · AC-DIAL-6 |
 | Build a dial list from what the store returned: registered number first, then the alternates in the store's order, capped at C-01 — and freeze it for one run. | T1 · R2 · R3 · G2 |
 | Dial an ordered list for one outbound call, advancing on no answer, busy or unreachable, without the CSP acting, without an announcement, and without dropping the call. | T1 · T3 · R1 · G1 |
 | End a run the moment the CSP disconnects, dialling nothing further; bridge to exactly one number even when an answer and an advance coincide. | T5 · T2 · precedence 1 · precedence 2 |
