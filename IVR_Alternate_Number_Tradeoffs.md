@@ -1,6 +1,6 @@
 # IVR Alternate Number Routing — Tradeoffs Register
 
-Companion to `IVR_Alternate_Number_PRD.md` v1.1. **Not part of the PRD.** This is the PM's own record of every decision put as a tradeoff during the interview, what was rejected, and why.
+Companion to `IVR_Alternate_Number_PRD.md` v2.0. **Not part of the PRD.** This is the PM's own record of every decision put as a tradeoff during the interview, what was rejected, and why.
 
 Owner: Ashish Raj · Signed off 4 Aug 2026
 
@@ -37,3 +37,23 @@ The first draft of §1 said alternate-number coverage was **1.37% of the active 
 - **A false alarm, recorded so it is not repeated**: some alternate values appear on hundreds of tickets, which looked like shared lines being dialled as customer numbers. It was ticket-level repetition — the same customer raising many tickets — not customers sharing a number. G4 remains as a cheap safety net, not because sharing is common.
 
 Free text is a secondary source: `TICKETVANILLA` `DESCRIPTION`/`COMMENT`/`TITLE` carried a different-from-registered mobile on 23,900 tickets over 12 months, 4,972 distinct customers. It needs extraction and review before anything there could be dialled, so it is a possible one-off backfill rather than a source of record.
+
+## Superseded on 5 Aug 2026 — v2.0 scope reduction
+
+The rows above record decisions as they were taken. Several were later reversed by the PM. The originals are kept rather than edited, so the reasoning trail stays honest; these are the reversals.
+
+| Original row | What changed in v2.0 | Why |
+|---|---|---|
+| #2, #18, #19 — Capture as a source; an agent tagging a number | **Removed entirely.** This PRD no longer mentions Capture | The alternate number store is deployed and specified separately. How a number arrives is that PRD's, not this one's |
+| #5, #6 — store many alternates, freshness decides dial order | **One alternate per customer.** C-01 = 2 dials (registered + one alternate); ordering is degenerate | Only one alternate is used per customer today. C-01's range notes it rises when more are held |
+| #7 — expiry window of 6 months | **Restated as 180 days** | "Six months" has no single meaning, so a boundary test could not be written to the day. Same intent, computable |
+| #9, #10, #11 — the internal portal, no design file, masked with reveal | **Removed entirely.** No screen section in this PRD | The portal is specified in the Customer Alternate Number Store PRD, which owns its design |
+| #14, #15 — install in scope with its own metric M3 | **Install out of scope.** M3 removed; two metrics remain | Restore and Pickup only. Install stays as the frozen 75.8% benchmark, a reference point rather than a family this spec applies to |
+| #17 — two lifecycles in §3b | **One lifecycle.** Only the fallback run remains | The alternate number's lifecycle moved out with the store |
+
+**New in v2.0, from a QA review of the acceptance criteria:**
+
+- **"Does not answer" is now defined** in the glossary as the Exotel outcome for unanswered, busy or unreachable, with ring duration named as Exotel applet configuration. Eleven ACs turned on that phrase with nothing defining it, so no tester could execute them without leaving the document.
+- **Regression ACs no longer say "as it does today".** Six ACs compared against an undocumented baseline; each now asserts the observable it was standing in for — for example "exactly one dial is placed, to the registered number".
+- **Race ACs no longer say "at the same instant".** No tester can produce a simultaneous event; each is now framed as a testable state, such as "before the dial to position 2 is placed".
+- **Bundled ACs were split.** One assertion each, so a failure names itself.
