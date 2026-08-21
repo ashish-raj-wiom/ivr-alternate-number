@@ -1,6 +1,6 @@
 # IVR Alternate Number Routing — Tradeoffs Register
 
-Companion to `IVR_Alternate_Number_PRD.md` v2.5. **Not part of the PRD.** This is the PM's own record of every decision put as a tradeoff during the interview, what was rejected, and why.
+Companion to `IVR_Alternate_Number_PRD.md` v3.0. **Not part of the PRD.** This is the PM's own record of every decision put as a tradeoff during the interview, what was rejected, and why.
 
 Owner: Ashish Raj · Signed off 4 Aug 2026
 
@@ -88,3 +88,17 @@ Row #12 above recorded the PIN requirement as "entry-path parity" across two pat
 The phrase was doing one real job: making AC-RACE-3 true, that a change in the store mid-call does not disturb the call in progress. It was then used in sixteen places, most of them acceptance criteria about which numbers get dialled — where it described internal state instead of observable behaviour. A tester can watch which numbers were dialled and in what order; they cannot watch a list being frozen.
 
 The obligation is kept and stated as behaviour: **"the list is read once, at the start of the run"** (§3a precedence 3, T1, and the Fallback run definition). The ACs now assert the dials themselves — for example AC-DIAL-1 became *"09811100022 is dialled first and, if it does not answer, 09811100044 second — and no other number is dialled."*
+
+## v2.6 — per-dial logging, and what it costs to get wrong
+
+| Decision point | Chosen | Rejected | Why | Date |
+|---|---|---|---|---|
+| Must each dial's outcome be distinguishable, or is answered / not-answered enough? | **Five distinct outcomes**: answered, not answered, busy, could not be reached, ended by the CSP while ringing | Two outcomes; four outcomes without the abandoned case | Busy and unreachable collapsing into "not answered" removes the very distinction needed to diagnose a connect rate that will not move | 5 Aug 2026 |
+| What is recorded for the number that was ringing when the CSP hung up? | A row with **ended by the CSP while ringing** | Leave it undefined; record it as not answered | Neither answered nor unanswered — nobody waited to find out. Undefined, abandoned runs would have been counted as ring-outs and the no-answer rate would have inflated | 5 Aug 2026 |
+| How is the link between the log and the reported metrics enforced? | MQ-9 is named as the source record every other measure is computed from, and AC-WF-9 requires the reported connect rate to be reproducible from the rows alone | Trust that the dashboard and the log agree | A log and a dashboard that can drift apart do drift apart, and nobody notices until someone reconciles by hand — which is how the `BOOKING_LOGS` duplication went unspotted for a month in the P41 work | 5 Aug 2026 |
+
+## Finalise, v3.0 — 5 Aug 2026
+
+Full lint run at finalise. One error found and fixed: **R6 must-not(a)** — "do not carry a dial list from an earlier call" — had no acceptance criterion citing it. AC-DIAL-6 was testing it in substance but cited the wrong sub-obligation. Both R6 must-nots now have coverage.
+
+Everything else clean: sections in template order, all IDs contiguous with no dangling references, every rule obligation and transition AC-covered, all four guardrails anchored to both an AC and an MQ, every MQ with a named consumer, zero markers, zero TBD, all 50 acceptance criteria Settled, HTML parity word-for-word.

@@ -3,7 +3,7 @@
 | | | | |
 |---|---|---|---|
 | **Owner** — Ashish Raj (PM) | **Reviewer** — Rahul (Eng Lead) | **Status** — Signed off | **Sign-off** — Signed off · 5 Aug 2026 |
-| **Version** — v2.6 · 5 Aug 2026 | | | |
+| **Version** — v3.0 · 5 Aug 2026 | | | |
 
 ---
 
@@ -169,8 +169,8 @@ The one screen that touches alternate numbers is the internal portal that manage
 | AC-DIAL-2 | **Given** the store returns no alternate for Meena, **When** Ravi calls her, **Then** exactly one dial is placed, to 09811100022. | T6 · G2 | Settled |
 | AC-DIAL-3 | **Given** the store returns an error, or does not answer in time to be used, when asked for Meena's numbers, **When** Ravi's call is bridged, **Then** exactly one dial is placed, to 09811100022, and the call is bridged rather than failed. | T7 | Settled |
 | AC-DIAL-4 | **Given** a Pickup ticket for Meena and 09811100044 returned for her, **When** a CSP calls her on that ticket, **Then** a two-position dial list is built — Pickup is in scope. | T1 · M2 · §1 Boundary | Settled |
-| AC-DIAL-5 | **Given** `TKT-88231` was created on 10 Aug 2026 when the store held no alternate for Meena, 09811100044 was added on 11 Aug, and the ticket is still active, **When** Ravi calls her on 12 Aug, **Then** 09811100044 is dialled at position 2 — the number is used even though it arrived after the ticket. | R6 · T1 | Settled |
-| AC-DIAL-6 | **Given** Ravi called Meena on 12 Aug about `TKT-88231` when the store held 09811100044, **When** the stored alternate is changed to 09811100066 and Ravi calls again on 13 Aug about the same still-active ticket, **Then** the second run's position 2 is 09811100066 and 09811100044 is not dialled — every call on an active ticket takes the latest stored number. | R6 · R6 must-not(b) · T1 | Settled |
+| AC-DIAL-5 | **Given** `TKT-88231` was created on 10 Aug 2026 when the store held no alternate for Meena, 09811100044 was added on 11 Aug, and the ticket is still active, **When** Ravi calls her on 12 Aug, **Then** 09811100044 is dialled at position 2 — the number is used even though it arrived after the ticket. | R6 · R6 must-not(b) · T1 | Settled |
+| AC-DIAL-6 | **Given** Ravi called Meena on 12 Aug about `TKT-88231` when the store held 09811100044, **When** the stored alternate is changed to 09811100066 and Ravi calls again on 13 Aug about the same still-active ticket, **Then** the second run's position 2 is 09811100066 and 09811100044 is not dialled — every call on an active ticket takes the latest stored number, and no list is carried over from the earlier call. | R6 · R6 must-not(a) · T1 | Settled |
 
 ### FB — Falling back and connecting (T2, T3)
 
