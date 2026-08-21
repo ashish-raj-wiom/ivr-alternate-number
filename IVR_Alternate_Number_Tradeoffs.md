@@ -1,6 +1,6 @@
 # IVR Alternate Number Routing — Tradeoffs Register
 
-Companion to `IVR_Alternate_Number_PRD.md` v2.1. **Not part of the PRD.** This is the PM's own record of every decision put as a tradeoff during the interview, what was rejected, and why.
+Companion to `IVR_Alternate_Number_PRD.md` v2.2. **Not part of the PRD.** This is the PM's own record of every decision put as a tradeoff during the interview, what was rejected, and why.
 
 Owner: Ashish Raj · Signed off 4 Aug 2026
 
@@ -64,3 +64,11 @@ The rows above record decisions as they were taken. Several were later reversed 
 |---|---|---|
 | #7, #8 — alternates go stale after C-02; expiry is the removal mechanism | **C-02 removed entirely.** No age test, no G5 guardrail, no expiry ACs | Whether a number is still fit to dial is the store's judgement, not this spec's. AC-REG-6 now asserts the opposite of the old behaviour: an alternate last used two years ago **is** dialled, because this spec applies no age test |
 | Dedupe against the registered number (R3/G3 in v2.0) | **Removed entirely.** No dedupe rule, no guardrail, no AC | The store's own spec refuses a number equal to the registered number — its R2b, tested by its AC-HUB-4, and its glossary defines an alternate as "a phone number, other than their registered number". Testing it here duplicated a guarantee the store already gives |
+
+## v2.2 — the dial list is resolved at call time
+
+| Decision point | Chosen | Rejected | Why | Date |
+|---|---|---|---|---|
+| When is the dial list built? | **At the moment the call is placed**, from what the store holds then | Resolve at ticket creation; cache a list per ticket; carry a list from an earlier call on the same ticket | An alternate added after the ticket was raised must be used on the next call. Resolving at ticket creation would silently ignore every number captured after a ticket opened — which is most of them | 5 Aug 2026 |
+
+v2.1 already froze the list "when the run begins", which meant the same thing, but only implicitly — and implicit is how a developer ends up resolving it at ticket creation. R6 now states it as an obligation with two must-nots, T1 says it in canon, and two ACs test it: AC-DIAL-5 (a number added after the ticket is dialled) and AC-DIAL-6 (two calls on one ticket each take the latest stored number).
